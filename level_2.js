@@ -21,9 +21,9 @@ class LevelTwo extends LevelScene
           });
 
 
-        this.humanoids.push(this.constructHumanoid(700+600, 700, this.scale+0.2, false, 5, true, 2000, 2));
-        this.humanoids.push(this.constructHumanoid(800+200, 500, this.scale-0.3, false, 2, true, 3000, 3));
-        this.humanoids.push(this.constructHumanoid(900+700, 300, this.scale-0.5, false, 1, true, 4000, 1));
+        this.humanoids.push(this.constructHumanoid(700+600, 700, this.levelScale+0.2, false, 5, true, 2000, 2));
+        this.humanoids.push(this.constructHumanoid(800+200, 500, this.levelScale-0.3, false, 2, true, 3000, 3));
+        this.humanoids.push(this.constructHumanoid(900+700, 300, this.levelScale-0.5, false, 1, true, 4000, 1));
 
 
     }

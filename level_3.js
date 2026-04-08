@@ -20,11 +20,11 @@ class LevelThree extends LevelScene
             instructions.setText("");
           });
 
-        this.humanoids.push(this.constructHumanoid(850+400, 400, this.scale+0.5, false, 9, true, 5000, 5));
+        this.humanoids.push(this.constructHumanoid(850+400, 400, this.levelScale+0.5, false, 9, true, 5000, 5));
         
         let weirdAmalgamX = 1700;
         let weirdAmalgamY = 600;
-        let weirdAmalgamScale = this.scale-0.6;
+        let weirdAmalgamScale = this.levelScale-0.6;
         let humanoidCount = 10;
         for (let count = 0; count < humanoidCount; count++) {
             this.humanoids.push(this.constructHumanoid(weirdAmalgamX-count, weirdAmalgamY, weirdAmalgamScale, false, 1, true, Math.random()*500 + 750, Math.random()*2+10));

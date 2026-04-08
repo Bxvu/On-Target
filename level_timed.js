@@ -29,9 +29,9 @@ class TimedLevel extends LevelScene
     update(time, delta){
         super.update(time, delta);
         this.timerDisplay.setText("Time: " + (this.totaltime-this.sceneDuration/1000).toFixed(2) + "s");
-        if (this.totaltime-this.sceneDuration/1000 < 0 && !this.reset) {
+        if (this.totaltime-this.sceneDuration/1000 < 0 && !this.isLevelEnding) {
             this.events.emit("levelEnd", {victory:true});
-            this.reset = true;
+            this.isLevelEnding = true;
             let count = 0
             this.humanoids.forEach(humanoid => {
                 if (humanoid.health <= 0) {
@@ -67,7 +67,7 @@ class TimedLevel extends LevelScene
         humanoidCount = amalgamSpawned ? Math.random()*4+1 : Math.random()*6+2;
         for (let count = 0; count < humanoidCount; count++) {
             let difficulty = Math.random();
-            this.humanoids.push(this.constructHumanoid(Math.random()*1400+500, Math.random()*900+100, this.scale+(difficulty-0.5), false, Math.floor(difficulty*5)+1, true, Math.random()*5000 + 750, Math.random()*9+1));
+            this.humanoids.push(this.constructHumanoid(Math.random()*1400+500, Math.random()*900+100, this.levelScale+(difficulty-0.5), false, Math.floor(difficulty*5)+1, true, Math.random()*5000 + 750, Math.random()*9+1));
         }
 
     }
