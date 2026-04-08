@@ -1,0 +1,27 @@
+{
+  "name": "cmpm-120---physics",
+  "version": "1.0.0",
+  "description": "Credits to: https://github.com/liabru/matter-js/blob/master/examples/ragdoll.js",
+  "main": "dist/game.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "build": "npx tsc -p tsconfig.json",
+    "watch": "npx tsc -p tsconfig.json --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bxviu/CMPM-120---Physics.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bxviu/CMPM-120---Physics/issues"
+  },
+  "homepage": "https://github.com/bxviu/CMPM-120---Physics#readme",
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

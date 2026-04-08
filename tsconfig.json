@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "rootDir": "src",
+    "target": "ES2017",
+    "module": "none",
+    "outFile": "dist/game.js",
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "sourceMap": true,
+    "lib": ["DOM", "ES2017"]
+  },
+  "files": [
+    "src/types/phaser-global.d.ts",
+    "src/types/game_types.ts",
+    "src/game_definitions.ts",
+    "src/physics_ragdoll.ts",
+    "src/physics_level.ts",
+    "src/menu.ts",
+    "src/level_1.ts",
+    "src/level_2.ts",
+    "src/level_3.ts",
+    "src/level_timed.ts",
+    "src/summary_menu.ts",
+    "src/main_menu.ts",
+    "src/physics_game.ts"
+  ]
+}
