@@ -53,6 +53,7 @@ function getOfflineModeStatus(): { title: string; detail: string } {
 
 function createWeaponProjectile(config: {
     id: string;
+    texture?: string;
     scale: number;
     lifetimeMs: number;
     maxActive: number;
@@ -60,10 +61,15 @@ function createWeaponProjectile(config: {
     tint: number;
     pierceCount?: number;
     statusEffects?: EnemyStatusEffectConfig[];
+    hitboxShape?: ProjectileHitboxShape;
+    sticksToTargets?: boolean;
+    minImpactSpeed?: number;
+    healPlayerOnHit?: number;
+    healPlayerOnKill?: number;
 }): ProjectileConfig {
     return {
         id: config.id,
-        texture: "arrow",
+        texture: config.texture ?? "arrow",
         scale: config.scale,
         lifetimeMs: config.lifetimeMs,
         collisionGroup: -15,
@@ -71,7 +77,12 @@ function createWeaponProjectile(config: {
         damage: config.damage,
         tint: config.tint,
         pierceCount: config.pierceCount ?? 0,
-        statusEffects: config.statusEffects?.map((effect) => ({ ...effect }))
+        statusEffects: config.statusEffects?.map((effect) => ({ ...effect })),
+        hitboxShape: config.hitboxShape ?? "rectangle",
+        sticksToTargets: config.sticksToTargets ?? true,
+        minImpactSpeed: config.minImpactSpeed,
+        healPlayerOnHit: config.healPlayerOnHit,
+        healPlayerOnKill: config.healPlayerOnKill
     };
 }
 
@@ -86,6 +97,7 @@ function createWeaponDefinition(config: {
     placeholderLabel: string;
         projectile: {
             id: string;
+            texture?: string;
             scale: number;
             lifetimeMs: number;
             maxActive: number;
@@ -93,6 +105,11 @@ function createWeaponDefinition(config: {
             tint: number;
             pierceCount?: number;
             statusEffects?: EnemyStatusEffectConfig[];
+            hitboxShape?: ProjectileHitboxShape;
+            sticksToTargets?: boolean;
+            minImpactSpeed?: number;
+            healPlayerOnHit?: number;
+            healPlayerOnKill?: number;
         };
 }): WeaponDefinition {
     return {
@@ -129,11 +146,25 @@ function describeEnemyStatusEffect(effect: EnemyStatusEffectConfig): string {
 }
 
 function getProjectileStatusSummary(projectile: ProjectileConfig): string[] {
-    if (!projectile.statusEffects || projectile.statusEffects.length === 0) {
+    const summary: string[] = [];
+
+    if (projectile.healPlayerOnHit && projectile.healPlayerOnHit > 0) {
+        summary.push(`Heal: +${projectile.healPlayerOnHit} on hit`);
+    }
+
+    if (projectile.healPlayerOnKill && projectile.healPlayerOnKill > 0) {
+        summary.push(`Heal: +${projectile.healPlayerOnKill} on kill`);
+    }
+
+    if (projectile.statusEffects && projectile.statusEffects.length > 0) {
+        summary.push(...projectile.statusEffects.map((effect) => describeEnemyStatusEffect(effect)));
+    }
+
+    if (summary.length === 0) {
         return ["Status: None"];
     }
 
-    return projectile.statusEffects.map((effect) => describeEnemyStatusEffect(effect));
+    return summary;
 }
 
 const ENEMY_ARROW_CONFIG: ProjectileConfig = {
@@ -146,7 +177,9 @@ const ENEMY_ARROW_CONFIG: ProjectileConfig = {
     damage: {
         body: 1,
         head: 3
-    }
+    },
+    hitboxShape: "rectangle",
+    sticksToTargets: true
 };
 
 const STANDARD_ENEMY_ARCHETYPE: EnemyArchetype = {
@@ -409,6 +442,80 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
                 durationMs: 5000,
                 maxStacks: 5
             }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "rock-bow",
+        name: "Rock Bow",
+        description: "Fires a blunt stone that slams into enemies with a round hitbox instead of pinning into them.",
+        cost: 85,
+        bowTint: 0x8d6e63,
+        powerMultiplier: 0.5,
+        accentColor: 0x8d6e63,
+        placeholderLabel: "Stone",
+        projectile: {
+            id: "rock-shot",
+            texture: "rock",
+            scale: 0.18,
+            lifetimeMs: 6500,
+            maxActive: 18,
+            damage: {
+                body: 3,
+                head: 4
+            },
+            tint: 0xffffff,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 0
+        }
+    }),
+    createWeaponDefinition({
+        id: "healing-rock-bow",
+        name: "Healing Rock",
+        description: "Each solid rock hit patches you up, rewarding close chains of blunt impacts.",
+        cost: 120,
+        bowTint: 0x52b788,
+        powerMultiplier: 0.55,
+        accentColor: 0x52b788,
+        placeholderLabel: "Leech",
+        projectile: {
+            id: "healing-rock-shot",
+            texture: "rock",
+            scale: 0.18,
+            lifetimeMs: 6500,
+            maxActive: 16,
+            damage: {
+                body: 2,
+                head: 3
+            },
+            tint: 0x52b788,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 0,
+            healPlayerOnHit: 1
+        }
+    }),
+    createWeaponDefinition({
+        id: "healing-arrow-bow",
+        name: "Healing Arrow",
+        description: "Slim arrows restore health only when they finish an enemy off.",
+        cost: 125,
+        bowTint: 0x2a9d8f,
+        powerMultiplier: 1,
+        accentColor: 0x2a9d8f,
+        placeholderLabel: "Heal",
+        projectile: {
+            id: "healing-arrow-shot",
+            texture: "arrow",
+            scale: 0.19,
+            lifetimeMs: 7900,
+            maxActive: 22,
+            damage: {
+                body: 2,
+                head: 4
+            },
+            tint: 0x2a9d8f,
+            healPlayerOnKill: 4
         }
     })
 ];

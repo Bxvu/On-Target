@@ -5,10 +5,13 @@ const LEVEL_IMAGE_ASSETS: Array<[string, string]> = [
     ["aOpponentLeg", "armoredOpponent-leg.png"],
     ["aOpponentArm", "armoredOpponent-arm.png"],
     ["arrow", "arrow.png"],
+    ["rock", "rock.png"],
     ["bow", "bow.png"]
 ];
 
 const PLAYER_SPAWN = { x: 75, y: 850 };
+const PLAYER_MAX_HEALTH = 10;
+const PLAYER_OVERHEAL_DECAY_INTERVAL_MS = 1000;
 const WORLD_BOUNDS = {
     ground: { x: 1920 / 2, y: 1300, width: 2000, height: 500 },
     ceiling: { x: 1920 / 2, y: -1000, width: 2000, height: 500 },
@@ -66,6 +69,7 @@ class LevelScene extends LooseScene {
         this.arrowsHit = 0;
         this.kills = 0;
         this.currencyEarned = 0;
+        this.overhealDecayTimerMs = 0;
 
         this.spawnedArrows = this.createArrowCollection("player");
         this.opponentArrows = this.createArrowCollection("enemy");
@@ -177,13 +181,13 @@ class LevelScene extends LooseScene {
     }
 
     createPlayerRig(): void {
-        const playerItems = this.createPlayer(PLAYER_SPAWN.x, PLAYER_SPAWN.y, Math.abs(this.levelScale), 10);
+        const playerItems = this.createPlayer(PLAYER_SPAWN.x, PLAYER_SPAWN.y, Math.abs(this.levelScale), PLAYER_MAX_HEALTH);
 
         this.bow = playerItems.playerContainer;
         this.bowSprite = playerItems.bowSprite;
         this.player = playerItems.player;
         this.player.loadout = this.playerLoadout;
-        this.player.healthDisplay = this.add.text(PLAYER_SPAWN.x, PLAYER_SPAWN.y - 100, "Health: 10", HUD_STYLES.playerHealth);
+        this.player.healthDisplay = this.add.text(PLAYER_SPAWN.x, PLAYER_SPAWN.y - 100, `Health: ${PLAYER_MAX_HEALTH}`, HUD_STYLES.playerHealth);
         this.player.healthDisplay.setOrigin(0.5, 0.5);
 
         this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
@@ -227,6 +231,7 @@ class LevelScene extends LooseScene {
 
         const humanoidsDefeated = this.checkCombatCollisions();
         this.updateHumanoidAI(delta);
+        this.updatePlayerOverheal(delta);
         this.updatePlayerHealthDisplay();
         this.handlePlayerDefeat();
         this.handleWaveVictory(humanoidsDefeated);
@@ -556,6 +561,25 @@ class LevelScene extends LooseScene {
         this.player.healthDisplay!.y = this.player.parts.chest.position.y - 100;
     }
 
+    updatePlayerOverheal(delta: number): void {
+        if (this.isLevelEnding || this.player.health <= PLAYER_MAX_HEALTH) {
+            this.overhealDecayTimerMs = 0;
+            return;
+        }
+
+        this.overhealDecayTimerMs += delta;
+
+        while (this.overhealDecayTimerMs >= PLAYER_OVERHEAL_DECAY_INTERVAL_MS && this.player.health > PLAYER_MAX_HEALTH) {
+            this.overhealDecayTimerMs -= PLAYER_OVERHEAL_DECAY_INTERVAL_MS;
+            this.player.health -= 1;
+        }
+
+        if (this.player.health <= PLAYER_MAX_HEALTH) {
+            this.player.health = Math.max(this.player.health, PLAYER_MAX_HEALTH);
+            this.overhealDecayTimerMs = 0;
+        }
+    }
+
     handlePlayerDefeat(): void {
         if (this.player.health > 0 || this.isLevelEnding) {
             return;
@@ -643,7 +667,7 @@ class LevelScene extends LooseScene {
             arrowsHit: this.arrowsHit,
             arrowsShot: this.arrowsShot,
             health: this.player.health,
-            maxHealth: 10,
+            maxHealth: PLAYER_MAX_HEALTH,
             duration: this.sceneDuration,
             currentLevel: this.currentLevel,
             nextLevel: this.nextLevel,
@@ -744,6 +768,12 @@ class LevelScene extends LooseScene {
 
     spawnArrow(x: number, y: number, angle: number, velocityX: number, velocityY: number, scale: number, projectileConfig: ProjectileConfig): MatterArrow {
         const arrow = this.matter.add.image(x, y, projectileConfig.texture, null) as MatterArrow;
+
+        if (projectileConfig.hitboxShape === "circle") {
+            const radius = Math.max(4, Math.min(arrow.width, arrow.height) * 0.5);
+            arrow.setCircle(radius);
+        }
+
         arrow.setScale(projectileConfig.scale * scale);
         arrow.setAngle(angle);
         arrow.setVelocity(velocityX, velocityY);
@@ -824,7 +854,8 @@ class LevelScene extends LooseScene {
         const aimArrow = this.createStaticWeaponSprite(
             this.playerLoadout.projectile.texture,
             scale,
-            this.playerLoadout.projectile.tint
+            this.playerLoadout.projectile.tint,
+            this.playerLoadout.projectile.scale
         );
         const bowSprite = this.createStaticWeaponSprite(
             this.playerLoadout.weapon.bowTexture,
@@ -838,10 +869,10 @@ class LevelScene extends LooseScene {
         return { player, playerContainer, bowSprite, aimArrow };
     }
 
-    createStaticWeaponSprite(texture: string, scale: number, tint?: number): MatterImage {
+    createStaticWeaponSprite(texture: string, scale: number, tint?: number, spriteScale = 0.2): MatterImage {
         const weaponSprite = this.matter.add.image(100, 0, texture, null);
         weaponSprite.setStatic(true);
-        weaponSprite.setScale(0.2 * scale);
+        weaponSprite.setScale(spriteScale * scale);
 
         if (tint != null) {
             weaponSprite.setTint(tint);
@@ -877,7 +908,19 @@ class LevelScene extends LooseScene {
             return;
         }
 
-        const shouldStick = arrow.piercesRemaining <= 0;
+        const impactVelocity = arrow.body.velocity;
+        const impactSpeed = Math.sqrt(
+            impactVelocity.x * impactVelocity.x +
+            impactVelocity.y * impactVelocity.y
+        );
+        const minImpactSpeed = arrow.projectileConfig.minImpactSpeed ?? 0;
+
+        if (impactSpeed < minImpactSpeed) {
+            return;
+        }
+
+        const sticksToTargets = arrow.projectileConfig.sticksToTargets ?? true;
+        const shouldStick = sticksToTargets && arrow.piercesRemaining <= 0;
         arrow.hitTargetIds.push(person.combatId);
 
         if (person.health > 0) {
@@ -885,9 +928,10 @@ class LevelScene extends LooseScene {
                 sprite.setTint(0xff0000);
             });
 
-            person.health -= part.label === "head"
+            const damageDealt = part.label === "head"
                 ? arrow.projectileConfig.damage.head
                 : arrow.projectileConfig.damage.body;
+            person.health -= damageDealt;
 
             if (arrowList.fromplayer) {
                 this.events.emit("arrowHit", 1);
@@ -901,15 +945,23 @@ class LevelScene extends LooseScene {
 
             if (arrowList.fromplayer) {
                 this.applyProjectileStatusEffects(person, arrow.projectileConfig.statusEffects);
+
+                if (damageDealt > 0) {
+                    this.healPlayer(arrow.projectileConfig.healPlayerOnHit ?? 0, person.parts.head.position.x, person.parts.head.position.y - 90);
+                }
             }
 
             if (person.health <= 0) {
-                this.handlePersonDeath(person);
+                this.handlePersonDeath(person, arrowList.fromplayer ? arrow.projectileConfig : undefined);
             }
         }
 
         if (shouldStick) {
             this.stickArrowToPart(arrow, person, part);
+            return;
+        }
+
+        if (!sticksToTargets) {
             return;
         }
 
@@ -931,7 +983,41 @@ class LevelScene extends LooseScene {
         arrow.alreadyHit = true;
     }
 
-    handlePersonDeath(person: RagdollPerson): void {
+    healPlayer(amount: number, x: number, y: number): void {
+        if (amount <= 0 || this.player.health <= 0) {
+            return;
+        }
+
+        const previousHealth = this.player.health;
+        this.player.health += amount;
+        const healedAmount = this.player.health - previousHealth;
+
+        if (healedAmount <= 0) {
+            return;
+        }
+
+        if (this.player.health > PLAYER_MAX_HEALTH) {
+            this.overhealDecayTimerMs = 0;
+        }
+
+        const healText = this.add.text(x, y, `+${healedAmount} HP`, {
+            font: "bold 24px Arial",
+            fill: "#52b788"
+        }).setOrigin(0.5, 0.5).setDepth(30);
+
+        this.tweens.add({
+            targets: healText,
+            y: healText.y - 50,
+            alpha: { from: 1, to: 0 },
+            duration: 700,
+            ease: "Cubic.out",
+            onComplete: () => {
+                healText.destroy();
+            }
+        });
+    }
+
+    handlePersonDeath(person: RagdollPerson, sourceProjectile?: ProjectileConfig): void {
         if (person.dead) {
             return;
         }
@@ -940,6 +1026,10 @@ class LevelScene extends LooseScene {
 
         if (person !== this.player) {
             this.kills += 1;
+
+            if (sourceProjectile) {
+                this.healPlayer(sourceProjectile.healPlayerOnKill ?? 0, person.parts.head.position.x, person.parts.head.position.y - 90);
+            }
 
             const baseReward = person.archetype?.currencyReward ?? 0;
             const reward = Math.max(0, Math.round(baseReward * (person.rewardMultiplier ?? 1)));

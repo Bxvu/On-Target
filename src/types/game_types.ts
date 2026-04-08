@@ -22,6 +22,7 @@ type GameSprite = any;
 type GameText = any;
 type GameObject = any;
 type ProjectileOwner = "player" | "enemy";
+type ProjectileHitboxShape = "rectangle" | "circle";
 type ShopItemCategory = "bow" | "arrow" | "utility";
 type EnemyArchetypeId = "standard";
 type EnemyStatusEffectKind = "bounty" | "burn" | "scatter" | "jam";
@@ -177,6 +178,11 @@ interface ProjectileConfig {
     tint?: number;
     pierceCount?: number;
     statusEffects?: EnemyStatusEffectConfig[];
+    hitboxShape?: ProjectileHitboxShape;
+    sticksToTargets?: boolean;
+    minImpactSpeed?: number;
+    healPlayerOnHit?: number;
+    healPlayerOnKill?: number;
 }
 
 interface EnemyAttackTuning {
