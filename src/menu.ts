@@ -3,9 +3,6 @@ class Menu extends LooseScene {
     }
 
     preload(): void {
-        this.load.plugin("rexroundrectangleplugin", "https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexroundrectangleplugin.min.js", true);
-        this.load.plugin("rexkawaseblurpipelineplugin", "https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexkawaseblurpipelineplugin.min.js", true);
-        this.load.plugin("rexdropshadowpipelineplugin", "https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexdropshadowpipelineplugin.min.js", true);
     }
 
     create(): void {

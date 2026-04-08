@@ -6,6 +6,7 @@ type ManualLevelKey =
 
 type SceneKey =
     | "MainMenu"
+    | "SettingsMenu"
     | "ShopMenu"
     | "PauseScene"
     | "SummaryScene"

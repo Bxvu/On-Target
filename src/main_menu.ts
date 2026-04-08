@@ -15,18 +15,6 @@ class MainMenu extends Menu {
         const selectedWeapon = getWeaponDefinition(playerProfile.selectedWeaponId);
         const manualLevels = getManualLevelDefinitions();
 
-        const fullscreenButton = createTextButton(this, {
-            x: 1785,
-            y: 60,
-            width: 240,
-            height: 78,
-            label: "Fullscreen",
-            backgroundColor: 0x8ecae6,
-            depth: 20
-        });
-
-        bindFullscreenToggle(this, fullscreenButton);
-
         const wholeContainer = this.add.container(1920 / 2, -1000);
         const entireBox = this.add.rexRoundRectangle(0, 0, 1800, 920, 30, 0x99b0af, 1);
         entireBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
@@ -77,22 +65,28 @@ class MainMenu extends Menu {
             scene: SceneKey;
         }> = [
             {
-                x: -420,
+                x: -540,
                 label: "Timed\nMode",
                 color: 0xffafaa,
                 scene: "TimedLevel"
             },
             {
-                x: 0,
+                x: -180,
                 label: "Credits",
                 color: 0xffffaa,
                 scene: "Credits"
             },
             {
-                x: 420,
+                x: 180,
                 label: "Shop",
                 color: 0xcdb4db,
                 scene: "ShopMenu"
+            },
+            {
+                x: 540,
+                label: "Settings",
+                color: 0x8ecae6,
+                scene: "SettingsMenu"
             }
         ];
 
@@ -122,6 +116,98 @@ class MainMenu extends Menu {
     }
 
     update(): void {
+    }
+}
+
+class SettingsMenu extends Menu {
+    constructor() {
+        super("SettingsMenu");
+    }
+
+    preload(): void {
+        super.preload();
+    }
+
+    create(): void {
+        const offlineModeStatus = getOfflineModeStatus();
+        const wholeContainer = this.add.container(1920 / 2, -1000);
+        const panel = this.add.rexRoundRectangle(0, 0, 1100, 780, 30, 0x99b0af, 1);
+        panel.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
+        wholeContainer.add(panel);
+
+        const title = this.add.text(0, -280, "Settings", {
+            font: "100px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        const subtitle = this.add.text(
+            0,
+            -180,
+            "Move display options here and keep a local copy ready before your connection drops.",
+            {
+                font: "34px Arial",
+                fill: "#1b1b1b",
+                align: "center",
+                wordWrap: { width: 860 }
+            }
+        ).setOrigin(0.5);
+        const helperText = this.add.text(
+            0,
+            -65,
+            "Offline mode now caches this page so scene changes keep working even if your Wi-Fi drops mid-run.",
+            {
+                font: "28px Arial",
+                fill: "#1b1b1b",
+                align: "center",
+                wordWrap: { width: 820 }
+            }
+        ).setOrigin(0.5);
+        const statusTitle = this.add.text(0, 170, offlineModeStatus.title, {
+            font: "bold 40px Arial",
+            fill: "#000000",
+            align: "center",
+            wordWrap: { width: 820 }
+        }).setOrigin(0.5);
+        const statusText = this.add.text(0, 250, offlineModeStatus.detail, {
+            font: "28px Arial",
+            fill: "#1b1b1b",
+            align: "center",
+            wordWrap: { width: 820 }
+        }).setOrigin(0.5);
+
+        wholeContainer.add([title, subtitle, helperText, statusTitle, statusText]);
+
+        const fullscreenButton = createTextButton(this, {
+            x: 0,
+            y: 40,
+            width: 360,
+            height: 110,
+            label: "Fullscreen",
+            backgroundColor: 0x8ecae6,
+            font: "bold 34px Arial",
+            parent: wholeContainer
+        });
+        bindFullscreenToggle(this, fullscreenButton);
+
+        const backButton = createTextButton(this, {
+            x: 0,
+            y: 355,
+            width: 300,
+            height: 100,
+            label: "Main Menu",
+            backgroundColor: 0x3fafaa,
+            parent: wholeContainer
+        });
+
+        backButton.background.on("pointerup", () => {
+            this.menuLeave(wholeContainer, "SettingsMenu", "MainMenu");
+        });
+
+        this.tweens.add({
+            targets: wholeContainer,
+            y: 1080 / 2,
+            duration: 500,
+            ease: "Cubic.out"
+        });
     }
 }
 

@@ -1,5 +1,56 @@
 const PLAYER_PROFILE_STORAGE_KEY = "on-target-player-profile";
 
+function ensureLocalRoundRectangleFactory(): void {
+    const factory = Phaser.GameObjects.GameObjectFactory as any;
+
+    if (factory.prototype.rexRoundRectangle || factory.__onTargetRoundRectRegistered) {
+        return;
+    }
+
+    factory.register(
+        "rexRoundRectangle",
+        function (
+            this: any,
+            x: number,
+            y: number,
+            width: number,
+            height: number,
+            _radius: number,
+            fillColor: number,
+            fillAlpha: number
+        ) {
+            const rectangle = new Phaser.GameObjects.Rectangle(this.scene, x, y, width, height, fillColor, fillAlpha);
+            this.displayList.add(rectangle);
+            return rectangle;
+        }
+    );
+
+    factory.__onTargetRoundRectRegistered = true;
+}
+
+function getOfflineModeStatus(): { title: string; detail: string } {
+    const supportsServiceWorker = "serviceWorker" in navigator && window.isSecureContext;
+
+    if (!supportsServiceWorker) {
+        return {
+            title: "Offline mode unavailable here",
+            detail: "This browser session does not allow installing the offline cache."
+        };
+    }
+
+    if (navigator.serviceWorker.controller) {
+        return {
+            title: "Offline mode ready",
+            detail: "If your connection drops after this page finishes loading, cached scenes and assets will keep working."
+        };
+    }
+
+    return {
+        title: "Offline mode installing",
+        detail: "The cache is being installed now. Refresh once after the first successful load so this tab is controlled offline too."
+    };
+}
+
 function createWeaponProjectile(config: {
     id: string;
     scale: number;
@@ -718,3 +769,5 @@ function bindFullscreenToggle(scene: LooseScene, button: TextButton): void {
 
     updateButtonLabel();
 }
+
+ensureLocalRoundRectangleFactory();

@@ -9,6 +9,14 @@
     <script src="dist/game.js"></script>
 </head>
 <body>
-    
+    <script>
+        if ("serviceWorker" in navigator && window.isSecureContext) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("./sw.js").catch(() => {
+                    // Ignore registration failures so the game still loads normally.
+                });
+            });
+        }
+    </script>
 </body>
 </html>

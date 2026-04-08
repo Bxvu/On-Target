@@ -8,12 +8,6 @@ const LEVEL_IMAGE_ASSETS: Array<[string, string]> = [
     ["bow", "bow.png"]
 ];
 
-const LEVEL_PLUGINS: Array<[string, string]> = [
-    ["rexroundrectangleplugin", "https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexroundrectangleplugin.min.js"],
-    ["rexkawaseblurpipelineplugin", "https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexkawaseblurpipelineplugin.min.js"],
-    ["rexdropshadowpipelineplugin", "https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexdropshadowpipelineplugin.min.js"]
-];
-
 const PLAYER_SPAWN = { x: 75, y: 850 };
 const WORLD_BOUNDS = {
     ground: { x: 1920 / 2, y: 1300, width: 2000, height: 500 },
@@ -41,7 +35,6 @@ class LevelScene extends LooseScene {
     preload(): void {
         this.load.path = "./assets/";
         LEVEL_IMAGE_ASSETS.forEach(([key, file]) => this.load.image(key, file));
-        LEVEL_PLUGINS.forEach(([key, url]) => this.load.plugin(key, url, true));
     }
 
     create(): void {
@@ -658,11 +651,6 @@ class LevelScene extends LooseScene {
             currencyEarned: this.currencyEarned,
             totalCurrency: this.playerProfile.currency
         } as SummarySceneData);
-
-        this.plugins.get("rexkawaseblurpipelineplugin").add(this.cameras.main, {
-            blur: 5,
-            quality: 3
-        });
 
         this.scene.pause();
     }
