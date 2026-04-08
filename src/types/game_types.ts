@@ -1,5 +1,6 @@
 type SceneKey =
     | "MainMenu"
+    | "ShopMenu"
     | "PauseScene"
     | "SummaryScene"
     | "LevelOne"
@@ -47,6 +48,8 @@ interface SummarySceneData {
     currentLevel: SceneKey;
     nextLevel: SceneKey;
     kills: number;
+    currencyEarned: number;
+    totalCurrency: number;
 }
 
 interface PauseSceneData {
@@ -73,6 +76,8 @@ interface MatterArrow extends MatterImage {
     projectileConfig: ProjectileConfig;
     body: MatterBody;
     active: boolean;
+    hitTargetIds: string[];
+    piercesRemaining: number;
 }
 
 interface ArrowCollection extends Array<MatterArrow> {
@@ -81,6 +86,7 @@ interface ArrowCollection extends Array<MatterArrow> {
 }
 
 interface RagdollPerson {
+    combatId: string;
     bodies: MatterBody[];
     constraints: MatterConstraint[];
     parts: RagdollPartMap;
@@ -115,6 +121,8 @@ interface ProjectileConfig {
     collisionGroup: number;
     maxActive: number;
     damage: DamageProfile;
+    tint?: number;
+    pierceCount?: number;
 }
 
 interface EnemyAttackTuning {
@@ -134,6 +142,7 @@ interface EnemyArchetype {
     id: EnemyArchetypeId | string;
     projectile: ProjectileConfig;
     attack: EnemyAttackTuning;
+    currencyReward: number;
 }
 
 interface EnemySpawnConfig {
@@ -149,7 +158,28 @@ interface EnemySpawnConfig {
 }
 
 interface PlayerLoadout {
+    weapon: WeaponDefinition;
     projectile: ProjectileConfig;
+    powerMultiplier: number;
+}
+
+interface WeaponDefinition {
+    id: string;
+    name: string;
+    description: string;
+    cost: number;
+    bowTexture: string;
+    bowTint: number;
+    projectile: ProjectileConfig;
+    powerMultiplier: number;
+    accentColor: number;
+    placeholderLabel: string;
+}
+
+interface PlayerProfile {
+    currency: number;
+    unlockedWeaponIds: string[];
+    selectedWeaponId: string;
 }
 
 interface ShopStatEffect {

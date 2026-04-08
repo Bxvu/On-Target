@@ -4,18 +4,35 @@ class LooseScene extends Phaser.Scene {
         super(...args);
     }
 }
-const PLAYER_ARROW_CONFIG = {
-    id: "player-arrow",
-    texture: "arrow",
-    scale: 0.2,
-    lifetimeMs: 7500,
-    collisionGroup: -15,
-    maxActive: 25,
-    damage: {
-        body: 1,
-        head: 3
-    }
-};
+const PLAYER_PROFILE_STORAGE_KEY = "on-target-player-profile";
+function createWeaponProjectile(config) {
+    var _a;
+    return {
+        id: config.id,
+        texture: "arrow",
+        scale: config.scale,
+        lifetimeMs: config.lifetimeMs,
+        collisionGroup: -15,
+        maxActive: config.maxActive,
+        damage: config.damage,
+        tint: config.tint,
+        pierceCount: (_a = config.pierceCount) !== null && _a !== void 0 ? _a : 0
+    };
+}
+function createWeaponDefinition(config) {
+    return {
+        id: config.id,
+        name: config.name,
+        description: config.description,
+        cost: config.cost,
+        bowTexture: "bow",
+        bowTint: config.bowTint,
+        projectile: createWeaponProjectile(config.projectile),
+        powerMultiplier: config.powerMultiplier,
+        accentColor: config.accentColor,
+        placeholderLabel: config.placeholderLabel
+    };
+}
 const ENEMY_ARROW_CONFIG = {
     id: "enemy-arrow",
     texture: "arrow",
@@ -42,10 +59,123 @@ const STANDARD_ENEMY_ARCHETYPE = {
         telegraphColor: 0xFFA500,
         telegraphThickness: 5,
         telegraphOuterStrength: 1
-    }
+    },
+    currencyReward: 10
 };
+// Add new weapons here. One entry is all the shop and gameplay need.
+const WEAPON_CATALOG = [
+    createWeaponDefinition({
+        id: "starter-bow",
+        name: "Starter Bow",
+        description: "The free default. Solid range and steady damage.",
+        cost: 0,
+        bowTint: 0xffffff,
+        powerMultiplier: 1,
+        accentColor: 0x8ecae6,
+        placeholderLabel: "Balanced",
+        projectile: {
+            id: "starter-arrow",
+            scale: 0.2,
+            lifetimeMs: 7500,
+            maxActive: 25,
+            damage: {
+                body: 1,
+                head: 3
+            },
+            tint: 0xffffff
+        }
+    }),
+    createWeaponDefinition({
+        id: "hunter-bow",
+        name: "Hunter Bow",
+        description: "Placeholder unlock with quicker arrows and stronger hits.",
+        cost: 40,
+        bowTint: 0x90be6d,
+        powerMultiplier: 1.15,
+        accentColor: 0x90be6d,
+        placeholderLabel: "Fast",
+        projectile: {
+            id: "hunter-arrow",
+            scale: 0.18,
+            lifetimeMs: 8500,
+            maxActive: 30,
+            damage: {
+                body: 2,
+                head: 4
+            },
+            tint: 0x90be6d
+        }
+    }),
+    createWeaponDefinition({
+        id: "heavy-bow",
+        name: "Heavy Bow",
+        description: "Placeholder unlock that trades speed for chunky damage.",
+        cost: 90,
+        bowTint: 0xf8961e,
+        powerMultiplier: 0.9,
+        accentColor: 0xf8961e,
+        placeholderLabel: "Power",
+        projectile: {
+            id: "heavy-arrow",
+            scale: 0.24,
+            lifetimeMs: 7000,
+            maxActive: 18,
+            damage: {
+                body: 3,
+                head: 5
+            },
+            tint: 0xf8961e
+        }
+    }),
+    createWeaponDefinition({
+        id: "strange-bow",
+        name: "Strange Bow",
+        description: "A risky bow with weak body shots but nasty headshots.",
+        cost: 90,
+        bowTint: 0x94d2bd,
+        powerMultiplier: 1,
+        accentColor: 0x94d2bd,
+        placeholderLabel: "Weird",
+        projectile: {
+            id: "strange-arrow",
+            scale: 0.16,
+            lifetimeMs: 7000,
+            maxActive: 18,
+            damage: {
+                body: -2,
+                head: 20
+            },
+            tint: 0x94d2bd
+        }
+    }),
+    createWeaponDefinition({
+        id: "phantom-bow",
+        name: "Phantom Bow",
+        description: "Piercing arrows pass through two enemies before the next hit sticks.",
+        cost: 130,
+        bowTint: 0x7b2cbf,
+        powerMultiplier: 0.95,
+        accentColor: 0x7b2cbf,
+        placeholderLabel: "Pierce",
+        projectile: {
+            id: "phantom-arrow",
+            scale: 0.2,
+            lifetimeMs: 7800,
+            maxActive: 20,
+            damage: {
+                body: 2,
+                head: 4
+            },
+            tint: 0x7b2cbf,
+            pierceCount: 2
+        }
+    })
+];
+const STARTER_WEAPON = WEAPON_CATALOG[0];
 const DEFAULT_PLAYER_LOADOUT = {
-    projectile: PLAYER_ARROW_CONFIG
+    weapon: STARTER_WEAPON,
+    projectile: STARTER_WEAPON.projectile,
+    powerMultiplier: STARTER_WEAPON.powerMultiplier
 };
 const DEFAULT_TEXT_BUTTON_STYLE = {
     radius: 24,
@@ -53,9 +183,113 @@ const DEFAULT_TEXT_BUTTON_STYLE = {
     textColor: "#1b1b1b",
     font: "bold 32px Arial"
 };
-// Typed scaffolding for a future shop system. Keeping the catalog data-driven
-// will make the eventual menu implementation much simpler.
-const SHOP_CATALOG = [];
+const SHOP_CATALOG = WEAPON_CATALOG.map((weapon) => ({
+    id: weapon.id,
+    name: weapon.name,
+    description: weapon.description,
+    category: "bow",
+    cost: weapon.cost,
+    effect: {
+        type: "projectile",
+        projectile: weapon.projectile
+    }
+}));
+function getWeaponDefinition(weaponId) {
+    var _a;
+    return (_a = WEAPON_CATALOG.find((weapon) => weapon.id === weaponId)) !== null && _a !== void 0 ? _a : STARTER_WEAPON;
+}
+function createPlayerLoadout(weaponId) {
+    const weapon = getWeaponDefinition(weaponId);
+    return {
+        weapon,
+        projectile: weapon.projectile,
+        powerMultiplier: weapon.powerMultiplier
+    };
+}
+function createDefaultPlayerProfile() {
+    return {
+        currency: 0,
+        unlockedWeaponIds: [STARTER_WEAPON.id],
+        selectedWeaponId: STARTER_WEAPON.id
+    };
+}
+function normalizePlayerProfile(profile) {
+    var _a, _b, _c;
+    const defaultProfile = createDefaultPlayerProfile();
+    const unlockedWeaponIds = Array.from(new Set([
+        STARTER_WEAPON.id,
+        ...((_a = profile === null || profile === void 0 ? void 0 : profile.unlockedWeaponIds) !== null && _a !== void 0 ? _a : []).filter((weaponId) => WEAPON_CATALOG.some((weapon) => weapon.id === weaponId))
+    ]));
+    const selectedWeaponId = unlockedWeaponIds.includes((_b = profile === null || profile === void 0 ? void 0 : profile.selectedWeaponId) !== null && _b !== void 0 ? _b : "")
+        ? profile.selectedWeaponId
+        : defaultProfile.selectedWeaponId;
+    return {
+        currency: Math.max(0, Math.floor((_c = profile === null || profile === void 0 ? void 0 : profile.currency) !== null && _c !== void 0 ? _c : defaultProfile.currency)),
+        unlockedWeaponIds,
+        selectedWeaponId
+    };
+}
+function loadPlayerProfile() {
+    try {
+        const storedProfile = window.localStorage.getItem(PLAYER_PROFILE_STORAGE_KEY);
+        if (!storedProfile) {
+            return createDefaultPlayerProfile();
+        }
+        return normalizePlayerProfile(JSON.parse(storedProfile));
+    }
+    catch (_error) {
+        return createDefaultPlayerProfile();
+    }
+}
+function savePlayerProfile(profile) {
+    const normalizedProfile = normalizePlayerProfile(profile);
+    try {
+        window.localStorage.setItem(PLAYER_PROFILE_STORAGE_KEY, JSON.stringify(normalizedProfile));
+    }
+    catch (_error) {
+        // Ignore storage failures so gameplay still works in restricted browsers.
+    }
+    return normalizedProfile;
+}
+function updatePlayerProfile(updater) {
+    const profile = loadPlayerProfile();
+    updater(profile);
+    return savePlayerProfile(profile);
+}
+function isWeaponUnlocked(profile, weaponId) {
+    return profile.unlockedWeaponIds.includes(weaponId);
+}
+function selectWeaponForProfile(weaponId) {
+    return updatePlayerProfile((profile) => {
+        if (isWeaponUnlocked(profile, weaponId)) {
+            profile.selectedWeaponId = weaponId;
+        }
+    });
+}
+function purchaseWeaponForProfile(weaponId) {
+    const weapon = getWeaponDefinition(weaponId);
+    let resultMessage = "";
+    const profile = updatePlayerProfile((currentProfile) => {
+        if (isWeaponUnlocked(currentProfile, weapon.id)) {
+            currentProfile.selectedWeaponId = weapon.id;
+            resultMessage = `${weapon.name} equipped.`;
+            return;
+        }
+        if (currentProfile.currency < weapon.cost) {
+            resultMessage = `You need $${weapon.cost - currentProfile.currency} more for ${weapon.name}.`;
+            return;
+        }
+        currentProfile.currency -= weapon.cost;
+        currentProfile.unlockedWeaponIds.push(weapon.id);
+        currentProfile.selectedWeaponId = weapon.id;
+        resultMessage = `${weapon.name} unlocked and equipped.`;
+    });
+    return {
+        success: isWeaponUnlocked(profile, weapon.id),
+        profile,
+        message: resultMessage
+    };
+}
 function createEnemySpawnConfig(config) {
     return Object.assign({ staticBody: false, archetype: STANDARD_ENEMY_ARCHETYPE }, config);
 }
@@ -273,7 +507,9 @@ const WORLD_BOUNDS = {
 };
 const HUD_STYLES = {
     charge: { font: "20px Arial", fill: "#ffff00" },
-    playerHealth: { font: "20px Arial", fill: "#ff1010" }
+    playerHealth: { font: "20px Arial", fill: "#ff1010" },
+    currency: { font: "32px Arial", fill: "#1b1b1b" },
+    weapon: { font: "24px Arial", fill: "#1b1b1b" }
 };
 class LevelScene extends LooseScene {
     init(data = {}) {
@@ -300,7 +536,9 @@ class LevelScene extends LooseScene {
         this.levelScale = this.levelData.scale != null ? this.levelData.scale : 1;
         this.ragdollFactory = new HumanoidFactory(this);
         this.matter.world.engine.timing.timeScale = 1;
-        this.playerLoadout = DEFAULT_PLAYER_LOADOUT;
+        this.playerProfile = loadPlayerProfile();
+        this.playerLoadout = createPlayerLoadout(this.playerProfile.selectedWeaponId);
+        this.nextCombatantId = 0;
         this.bowStream = false;
         this.instaCharge = false;
         this.canCharge = true;
@@ -309,6 +547,7 @@ class LevelScene extends LooseScene {
         this.arrowsShot = 0;
         this.arrowsHit = 0;
         this.kills = 0;
+        this.currencyEarned = 0;
         this.spawnedArrows = this.createArrowCollection("player");
         this.opponentArrows = this.createArrowCollection("enemy");
         this.humanoids = [];
@@ -353,7 +592,14 @@ class LevelScene extends LooseScene {
     createHud() {
         this.chargeDisplay = this.add.text(0, 0, "Charge: 0", HUD_STYLES.charge);
         this.chargeDisplay.setOrigin(0.5, 0.5).setDepth(10);
+        this.currencyDisplay = this.add.text(960, 52, "", HUD_STYLES.currency).setOrigin(0.5, 0.5).setDepth(25);
+        this.weaponDisplay = this.add.text(960, 92, "", HUD_STYLES.weapon).setOrigin(0.5, 0.5).setDepth(25);
+        this.refreshEconomyDisplay();
         this.createSystemButtons();
+    }
+    refreshEconomyDisplay() {
+        this.currencyDisplay.setText(`Money: $${this.playerProfile.currency}`);
+        this.weaponDisplay.setText(`Weapon: ${this.playerLoadout.weapon.name}`);
     }
     createSystemButtons() {
         const pauseButton = createTextButton(this, {
@@ -480,7 +726,7 @@ class LevelScene extends LooseScene {
         }
     }
     firePlayerArrow(power) {
-        this.shootArrow(power, this.levelScale, this.bow, this.mousex, this.mousey, this.playerLoadout.projectile, this.spawnedArrows);
+        this.shootArrow(power * this.playerLoadout.powerMultiplier, this.levelScale, this.bow, this.mousex, this.mousey, this.playerLoadout.projectile, this.spawnedArrows);
         this.arrowsShot += 1;
     }
     updateBowAim() {
@@ -620,7 +866,9 @@ class LevelScene extends LooseScene {
             duration: this.sceneDuration,
             currentLevel: this.currentLevel,
             nextLevel: this.nextLevel,
-            kills: this.kills
+            kills: this.kills,
+            currencyEarned: this.currencyEarned,
+            totalCurrency: this.playerProfile.currency
         });
         this.plugins.get("rexkawaseblurpipelineplugin").add(this.cameras.main, {
             blur: 5,
@@ -641,13 +889,13 @@ class LevelScene extends LooseScene {
         }));
     }
     spawnEnemy(config) {
-        const enemy = this.ragdollFactory.createEnemy(config.x, config.y, config.scale, {
+        const enemy = this.assignCombatId(this.ragdollFactory.createEnemy(config.x, config.y, config.scale, {
             staticBody: config.staticBody,
             health: config.health,
             flip: config.flip,
             attackInterval: config.attackInterval,
             delayAttack: config.attackDelay
-        });
+        }));
         enemy.archetype = config.archetype;
         enemy.spawnConfig = config;
         return enemy;
@@ -675,13 +923,19 @@ class LevelScene extends LooseScene {
         });
     }
     constructPlayer(x, y, scale, staticBody, health, flip) {
-        return this.ragdollFactory.createPlayer(x, y, scale, {
+        return this.assignCombatId(this.ragdollFactory.createPlayer(x, y, scale, {
             staticBody,
             health,
             flip
-        });
+        }));
+    }
+    assignCombatId(person) {
+        person.combatId = `combatant-${this.nextCombatantId}`;
+        this.nextCombatantId += 1;
+        return person;
     }
     spawnArrow(x, y, angle, velocityX, velocityY, scale, projectileConfig) {
+        var _a;
         const arrow = this.matter.add.image(x, y, projectileConfig.texture, null);
         arrow.setScale(projectileConfig.scale * scale);
         arrow.setAngle(angle);
@@ -690,6 +944,11 @@ class LevelScene extends LooseScene {
         arrow.alreadyHit = false;
         arrow.projectileConfig = projectileConfig;
         arrow.body.collisionFilter.group = projectileConfig.collisionGroup;
+        arrow.hitTargetIds = [];
+        arrow.piercesRemaining = (_a = projectileConfig.pierceCount) !== null && _a !== void 0 ? _a : 0;
+        if (projectileConfig.tint != null) {
+            arrow.setTint(projectileConfig.tint);
+        }
         return arrow;
     }
     shootArrow(power, scale, bow, mousex, mousey, projectileConfig, arrowList) {
@@ -735,17 +994,20 @@ class LevelScene extends LooseScene {
         });
     }
     createPlayer(x, y, scale, health) {
-        const aimArrow = this.createStaticWeaponSprite("arrow", scale);
-        const bowSprite = this.createStaticWeaponSprite("bow", scale);
+        const aimArrow = this.createStaticWeaponSprite(this.playerLoadout.projectile.texture, scale, this.playerLoadout.projectile.tint);
+        const bowSprite = this.createStaticWeaponSprite(this.playerLoadout.weapon.bowTexture, scale, this.playerLoadout.weapon.bowTint);
         const player = this.constructPlayer(x, y, scale, false, health, false);
         const playerContainer = this.add.container(x, y);
         playerContainer.add([bowSprite, aimArrow]);
         return { player, playerContainer, bowSprite, aimArrow };
     }
-    createStaticWeaponSprite(texture, scale) {
+    createStaticWeaponSprite(texture, scale, tint) {
         const weaponSprite = this.matter.add.image(100, 0, texture, null);
         weaponSprite.setStatic(true);
         weaponSprite.setScale(0.2 * scale);
+        if (tint != null) {
+            weaponSprite.setTint(tint);
+        }
         return weaponSprite;
     }
     checkArrowCollisions(arrowList, person) {
@@ -766,47 +1028,67 @@ class LevelScene extends LooseScene {
         });
     }
     handleArrowCollision(arrow, arrowList, person, part) {
-        if (!arrow.alreadyHit) {
-            arrow.bodyConstraint = this.matter.add.constraint(arrow, part, 0, 0, {
-                pointA: {
-                    x: (0.5 - Math.random()) * 75,
-                    y: (0.5 - Math.random()) * 30
-                },
-                pointB: { x: 0, y: 0 },
-                render: { visible: true }
+        if (arrow.alreadyHit || arrow.hitTargetIds.includes(person.combatId)) {
+            return;
+        }
+        const shouldStick = arrow.piercesRemaining <= 0;
+        arrow.hitTargetIds.push(person.combatId);
+        if (person.health > 0) {
+            person.linkedSprites.forEach((sprite) => {
+                sprite.setTint(0xff0000);
             });
-            person.linkedArrows.push(arrow);
-            arrow.body.collisionFilter.group = part.collisionFilter.group;
-            arrow.alreadyHit = true;
-            if (person.health > 0) {
+            person.health -= part.label === "head"
+                ? arrow.projectileConfig.damage.head
+                : arrow.projectileConfig.damage.body;
+            if (arrowList.fromplayer) {
+                this.events.emit("arrowHit", 1);
+            }
+            this.time.delayedCall(250, () => {
                 person.linkedSprites.forEach((sprite) => {
-                    sprite.setTint(0xff0000);
+                    sprite.clearTint();
                 });
-                person.health -= part.label === "head"
-                    ? arrow.projectileConfig.damage.head
-                    : arrow.projectileConfig.damage.body;
-                if (arrowList.fromplayer) {
-                    this.events.emit("arrowHit", 1);
-                }
-                this.time.delayedCall(250, () => {
-                    person.linkedSprites.forEach((sprite) => {
-                        sprite.clearTint();
-                    });
-                });
-                if (person.health <= 0) {
-                    this.handlePersonDeath(person);
-                }
+            });
+            if (person.health <= 0) {
+                this.handlePersonDeath(person);
             }
         }
-        else if (person.health <= 0) {
-            this.handlePersonDeath(person);
+        if (shouldStick) {
+            this.stickArrowToPart(arrow, person, part);
+            return;
         }
+        arrow.piercesRemaining -= 1;
+    }
+    stickArrowToPart(arrow, person, part) {
+        arrow.bodyConstraint = this.matter.add.constraint(arrow, part, 0, 0, {
+            pointA: {
+                x: (0.5 - Math.random()) * 75,
+                y: (0.5 - Math.random()) * 30
+            },
+            pointB: { x: 0, y: 0 },
+            render: { visible: true }
+        });
+        person.linkedArrows.push(arrow);
+        arrow.body.collisionFilter.group = part.collisionFilter.group;
+        arrow.alreadyHit = true;
     }
     handlePersonDeath(person) {
+        var _a, _b;
         if (person.dead) {
             return;
         }
         person.dead = true;
+        if (person !== this.player) {
+            this.kills += 1;
+            const reward = (_b = (_a = person.archetype) === null || _a === void 0 ? void 0 : _a.currencyReward) !== null && _b !== void 0 ? _b : 0;
+            if (reward > 0) {
+                this.playerProfile = updatePlayerProfile((profile) => {
+                    profile.currency += reward;
+                });
+                this.currencyEarned += reward;
+                this.refreshEconomyDisplay();
+                this.showCurrencyReward(person, reward);
+            }
+        }
         if (person.healthDisplay) {
             person.healthDisplay.setText("");
         }
@@ -835,6 +1117,19 @@ class LevelScene extends LooseScene {
                 ease: "Cubic.easeOut",
                 repeat: 0
             });
+        });
+    }
+    showCurrencyReward(person, reward) {
+        const rewardText = this.add.text(person.parts.head.position.x, person.parts.head.position.y - 60, `+$${reward}`, { font: "bold 28px Arial", fill: "#ffd166" }).setOrigin(0.5, 0.5).setDepth(30);
+        this.tweens.add({
+            targets: rewardText,
+            y: rewardText.y - 60,
+            alpha: { from: 1, to: 0 },
+            duration: 900,
+            ease: "Cubic.out",
+            onComplete: () => {
+                rewardText.destroy();
+            }
         });
     }
 }
@@ -1160,20 +1455,25 @@ class SummaryScene extends Menu {
         this.currentLevel = data.currentLevel;
         this.nextLevel = data.nextLevel;
         this.kills = data.kills;
+        this.currencyEarned = data.currencyEarned;
+        this.totalCurrency = data.totalCurrency;
     }
     preload() {
         super.preload();
     }
     create() {
         const summaryBox = this.add.container(1920 / 2, -1000);
-        const entireBox = this.add.rexRoundRectangle(0, 0, 750, 750, 30, 0x99b0af, 1);
+        const entireBox = this.add.rexRoundRectangle(0, 0, 820, 820, 30, 0x99b0af, 1);
         entireBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         summaryBox.add([entireBox]);
         const summaryTitle = this.health <= 0
             ? this.add.text(0, -310, "You Died...", { font: "100px Arial", fill: "#000000" })
             : this.add.text(0, -310, "Summary", { font: "100px Arial", fill: "#000000" });
         summaryTitle.setOrigin(0.5);
-        const accuracy = `Accuracy: ${((this.arrowsHit / this.arrowsShot) * 100).toFixed(3)}%`;
+        const accuracyValue = this.arrowsShot > 0
+            ? ((this.arrowsHit / this.arrowsShot) * 100).toFixed(3)
+            : "0.000";
+        const accuracy = `Accuracy: ${accuracyValue}%`;
         const accuracyText = this.add.text(0, -180, accuracy, { font: "50px Arial", fill: "#a0ffa0" });
         accuracyText.setOrigin(0.5);
         const health = `Health Remaining: ${this.health} / ${this.maxHealth}`;
@@ -1189,20 +1489,21 @@ class SummaryScene extends Menu {
         else {
             duration = `Time Taken: ${(this.timeTaken / 1000).toFixed(3)}s`;
         }
-        const durationText = this.add.text(0, 20, duration, { font: "50px Arial", fill: "#a0ffa0" });
+        const durationText = this.add.text(0, 10, duration, { font: "50px Arial", fill: "#a0ffa0" });
         durationText.setOrigin(0.5);
-        summaryBox.add([summaryTitle, accuracyText, healthText, durationText]);
-        const nextLevelBox = this.add.rexRoundRectangle((750 / 2) - (750 / 4), 200, 275, 200, 30, 0xffafaa, 1);
+        const currencyText = this.add.text(0, 105, `Currency: +$${this.currencyEarned}   Total: $${this.totalCurrency}`, { font: "42px Arial", fill: "#ffd166" }).setOrigin(0.5);
+        summaryBox.add([summaryTitle, accuracyText, healthText, durationText, currencyText]);
+        const nextLevelBox = this.add.rexRoundRectangle((750 / 2) - (750 / 4), 250, 275, 200, 30, 0xffafaa, 1);
         nextLevelBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         nextLevelBox.setInteractive();
-        const mainMenuBox = this.add.rexRoundRectangle(-(750 / 4), 200, 275, 200, 30, 0xffffaa, 1);
+        const mainMenuBox = this.add.rexRoundRectangle(-(750 / 4), 250, 275, 200, 30, 0xffffaa, 1);
         mainMenuBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         mainMenuBox.setInteractive();
         summaryBox.add([nextLevelBox, mainMenuBox]);
-        const mainMenuText = this.add.text(-(750 / 4), 200, " Main\nMenu", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
+        const mainMenuText = this.add.text(-(750 / 4), 250, " Main\nMenu", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
         const nextLevelText = (this.health <= 0 || this.currentLevel === "TimedLevel")
-            ? this.add.text((750 / 2) - (750 / 4), 200, "Retry", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5)
-            : this.add.text((750 / 2) - (750 / 4), 200, " Next\nLevel", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
+            ? this.add.text((750 / 2) - (750 / 4), 250, "Retry", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5)
+            : this.add.text((750 / 2) - (750 / 4), 250, " Next\nLevel", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
         summaryBox.add([mainMenuText, nextLevelText]);
         this.tweens.add({
             targets: summaryBox,
@@ -1237,6 +1538,8 @@ class MainMenu extends Menu {
         super.preload();
     }
     create() {
+        const playerProfile = loadPlayerProfile();
+        const selectedWeapon = getWeaponDefinition(playerProfile.selectedWeaponId);
         const fullscreenButton = createTextButton(this, {
             x: 1785,
             y: 60,
@@ -1248,57 +1551,87 @@ class MainMenu extends Menu {
         });
         bindFullscreenToggle(this, fullscreenButton);
         const wholeContainer = this.add.container(1920 / 2, -1000);
-        const entireBox = this.add.rexRoundRectangle(0, 0, 1800, 1080 - 120, 30, 0x99b0af, 1);
+        const entireBox = this.add.rexRoundRectangle(0, 0, 1800, 920, 30, 0x99b0af, 1);
         entireBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
-        wholeContainer.add([entireBox]);
-        const title = this.add.text(0, -310, "On Target", { font: "100px Arial", fill: "#000000" });
-        title.setOrigin(0.5);
-        wholeContainer.add([title]);
-        const level1Box = this.add.rexRoundRectangle(-450, -90, 275, 200, 30, 0x3fafaa, 1);
-        level1Box.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
-        level1Box.setInteractive();
-        const level2Box = this.add.rexRoundRectangle(0, -90, 275, 200, 30, 0xf0f6af, 1);
-        level2Box.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
-        level2Box.setInteractive();
-        const level3Box = this.add.rexRoundRectangle(450, -90, 275, 200, 30, 0x8ff00f, 1);
-        level3Box.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
-        level3Box.setInteractive();
-        const timedBox = this.add.rexRoundRectangle((750 / 2) - (750 / 4), 200, 275, 200, 30, 0xffafaa, 1);
-        timedBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
-        timedBox.setInteractive();
-        const creditsBox = this.add.rexRoundRectangle(-(750 / 4), 200, 275, 200, 30, 0xffffaa, 1);
-        creditsBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
-        creditsBox.setInteractive();
-        wholeContainer.add([level1Box, level2Box, level3Box, timedBox, creditsBox]);
-        const level1Text = this.add.text(-450, -90, "Level 1", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
-        const level2Text = this.add.text(0, -90, "Level 2", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
-        const level3Text = this.add.text(450, -90, "Level 3", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
-        const timedLevelText = this.add.text(-(750 / 4), 200, "Timed\n Mode", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
-        const creditsText = this.add.text((750 / 2) - (750 / 4), 200, "Credits", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
-        wholeContainer.add([creditsText, timedLevelText, level1Text, level2Text, level3Text]);
+        wholeContainer.add(entireBox);
+        const title = this.add.text(0, -360, "On Target", { font: "100px Arial", fill: "#000000" }).setOrigin(0.5);
+        const bankText = this.add.text(0, -265, `Money: $${playerProfile.currency}`, {
+            font: "48px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        const weaponText = this.add.text(0, -205, `Equipped: ${selectedWeapon.name}`, {
+            font: "36px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        wholeContainer.add([title, bankText, weaponText]);
+        const buttonConfigs = [
+            {
+                x: -525,
+                y: -40,
+                label: "Level 1",
+                color: 0x3fafaa,
+                scene: "LevelOne",
+                config: { scale: 1, canCharge: false }
+            },
+            {
+                x: 0,
+                y: -40,
+                label: "Level 2",
+                color: 0xf0f6af,
+                scene: "LevelTwo",
+                config: { scale: 1, canCharge: false }
+            },
+            {
+                x: 525,
+                y: -40,
+                label: "Level 3",
+                color: 0x8ff00f,
+                scene: "LevelThree",
+                config: { scale: 1, canCharge: false }
+            },
+            {
+                x: -525,
+                y: 240,
+                label: "Timed\nMode",
+                color: 0xffafaa,
+                scene: "TimedLevel",
+                config: { scale: 1, canCharge: false }
+            },
+            {
+                x: 0,
+                y: 240,
+                label: "Credits",
+                color: 0xffffaa,
+                scene: "Credits"
+            },
+            {
+                x: 525,
+                y: 240,
+                label: "Shop",
+                color: 0xcdb4db,
+                scene: "ShopMenu"
+            }
+        ];
+        buttonConfigs.forEach((buttonConfig) => {
+            const button = createTextButton(this, {
+                x: buttonConfig.x,
+                y: buttonConfig.y,
+                width: 300,
+                height: 210,
+                label: buttonConfig.label,
+                backgroundColor: buttonConfig.color,
+                font: "bold 46px Arial",
+                parent: wholeContainer
+            });
+            button.background.on("pointerup", () => {
+                this.menuLeave(wholeContainer, "MainMenu", buttonConfig.scene, buttonConfig.config);
+            });
+        });
         this.tweens.add({
             targets: wholeContainer,
             y: 1080 / 2,
             duration: 500,
-            ease: "Cubic.out",
-            onComplete: () => {
-                level1Box.on("pointerdown", () => {
-                    this.menuLeave(wholeContainer, "MainMenu", "LevelOne", { scale: 1, canCharge: false });
-                });
-                level2Box.on("pointerdown", () => {
-                    this.menuLeave(wholeContainer, "MainMenu", "LevelTwo", { scale: 1, canCharge: false });
-                });
-                level3Box.on("pointerdown", () => {
-                    this.menuLeave(wholeContainer, "MainMenu", "LevelThree", { scale: 1, canCharge: false });
-                });
-                // This keeps the original scene mapping behavior intact.
-                timedBox.on("pointerdown", () => {
-                    this.menuLeave(wholeContainer, "MainMenu", "Credits");
-                });
-                creditsBox.on("pointerdown", () => {
-                    this.menuLeave(wholeContainer, "MainMenu", "TimedLevel", { scale: 1, canCharge: false });
-                });
-            }
+            ease: "Cubic.out"
         });
     }
     update() {
@@ -1339,6 +1672,244 @@ class Credits extends Menu {
         });
     }
 }
+class ShopMenu extends Menu {
+    constructor() {
+        super("ShopMenu");
+    }
+    preload() {
+        super.preload();
+    }
+    create() {
+        this.playerProfile = loadPlayerProfile();
+        this.focusedWeaponId = this.playerProfile.selectedWeaponId;
+        const wholeContainer = this.add.container(1920 / 2, -1000);
+        const panel = this.add.rexRoundRectangle(0, 0, 1820, 960, 30, 0x99b0af, 1);
+        panel.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
+        wholeContainer.add(panel);
+        this.shopMoneyText = this.add.text(0, -360, "", {
+            font: "52px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        const title = this.add.text(0, -425, "Weapon Shop", {
+            font: "90px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        const subtitle = this.add.text(0, -310, "Hover or tap a weapon to inspect it, then buy or equip from the details panel.", {
+            font: "30px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        this.shopStatusText = this.add.text(0, 385, "", {
+            font: "34px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        wholeContainer.add([title, this.shopMoneyText, subtitle, this.shopStatusText]);
+        const gridPanel = this.add.rexRoundRectangle(-420, 30, 720, 650, 26, 0xe5efe9, 1);
+        gridPanel.setStrokeStyle(4, 0x7c8a87, 1);
+        const detailPanel = this.add.rexRoundRectangle(380, 30, 760, 650, 26, 0xf8fbf7, 1);
+        detailPanel.setStrokeStyle(4, 0x7c8a87, 1);
+        wholeContainer.add([gridPanel, detailPanel]);
+        const gridTitle = this.add.text(-420, -235, "Weapons", {
+            font: "48px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        const detailTitle = this.add.text(380, -235, "Details", {
+            font: "48px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        wholeContainer.add([gridTitle, detailTitle]);
+        this.shopCards = [];
+        const gridColumns = WEAPON_CATALOG.length <= 4 ? 2 : 3;
+        const gridRows = Math.max(1, Math.ceil(WEAPON_CATALOG.length / gridColumns));
+        const tileWidth = gridColumns === 2 ? 235 : 190;
+        const tileHeight = gridRows >= 3 ? 170 : 235;
+        const gridSpacingX = gridColumns === 2 ? 270 : 220;
+        const gridSpacingY = gridRows >= 3 ? 195 : 270;
+        const startX = -420 - ((gridColumns - 1) * gridSpacingX) / 2;
+        const startY = 30 - ((gridRows - 1) * gridSpacingY) / 2;
+        WEAPON_CATALOG.forEach((weapon, index) => {
+            const column = index % gridColumns;
+            const row = Math.floor(index / gridColumns);
+            const tilePosition = {
+                x: startX + column * gridSpacingX,
+                y: startY + row * gridSpacingY
+            };
+            const tile = this.add.container(tilePosition.x, tilePosition.y);
+            const tileBackground = this.add.rexRoundRectangle(0, 0, tileWidth, tileHeight, 24, 0xfafcf9, 1);
+            tileBackground.setStrokeStyle(5, weapon.accentColor, 1);
+            tileBackground.setInteractive({ useHandCursor: true });
+            const previewBackground = this.add.rexRoundRectangle(0, tileHeight >= 200 ? -22 : -12, tileWidth - 80, tileHeight >= 200 ? 120 : 88, 18, weapon.accentColor, 0.18);
+            previewBackground.setStrokeStyle(4, weapon.accentColor, 1);
+            const previewLabel = this.add.text(0, tileHeight >= 200 ? -40 : -25, "PLACEHOLDER", {
+                font: tileHeight >= 200 ? "bold 18px Arial" : "bold 14px Arial",
+                fill: "#1b1b1b"
+            }).setOrigin(0.5);
+            const previewName = this.add.text(0, tileHeight >= 200 ? -2 : 10, weapon.placeholderLabel, {
+                font: tileHeight >= 200 ? "38px Arial" : "28px Arial",
+                fill: "#1b1b1b"
+            }).setOrigin(0.5);
+            const weaponName = this.add.text(0, tileHeight >= 200 ? 72 : 52, weapon.name, {
+                font: tileHeight >= 200 ? "bold 26px Arial" : "bold 21px Arial",
+                fill: "#000000",
+                align: "center",
+                wordWrap: { width: tileWidth - 40 }
+            }).setOrigin(0.5);
+            const stateText = this.add.text(0, tileHeight >= 200 ? 104 : 72, "", {
+                font: tileHeight >= 200 ? "20px Arial" : "18px Arial",
+                fill: "#1b1b1b",
+                align: "center"
+            }).setOrigin(0.5);
+            tileBackground.on("pointerover", () => {
+                this.focusShopWeapon(weapon.id);
+            });
+            tileBackground.on("pointerup", () => {
+                this.focusShopWeapon(weapon.id);
+            });
+            tile.add([tileBackground, previewBackground, previewLabel, previewName, weaponName, stateText]);
+            wholeContainer.add(tile);
+            this.shopCards.push({ weapon, tileBackground, stateText });
+        });
+        this.detailPreviewBackground = this.add.rexRoundRectangle(380, -55, 270, 190, 24, 0xffffff, 1);
+        this.detailPreviewBackground.setStrokeStyle(5, 0x8ecae6, 1);
+        this.detailPlaceholderLabel = this.add.text(380, -83, "PLACEHOLDER", {
+            font: "bold 30px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        this.detailPreviewName = this.add.text(380, -28, "", {
+            font: "58px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        this.detailWeaponName = this.add.text(380, 105, "", {
+            font: "bold 50px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        this.detailDescription = this.add.text(380, 190, "", {
+            font: "30px Arial",
+            fill: "#1b1b1b",
+            align: "center",
+            wordWrap: { width: 560 }
+        }).setOrigin(0.5);
+        this.detailStats = this.add.text(380, 305, "", {
+            font: "28px Arial",
+            fill: "#1b1b1b",
+            align: "center"
+        }).setOrigin(0.5);
+        this.detailState = this.add.text(380, 395, "", {
+            font: "30px Arial",
+            fill: "#1b1b1b",
+            align: "center"
+        }).setOrigin(0.5);
+        wholeContainer.add([
+            this.detailPreviewBackground,
+            this.detailPlaceholderLabel,
+            this.detailPreviewName,
+            this.detailWeaponName,
+            this.detailDescription,
+            this.detailStats,
+            this.detailState
+        ]);
+        this.shopActionButton = createTextButton(this, {
+            x: 380,
+            y: 470,
+            width: 300,
+            height: 96,
+            label: "",
+            backgroundColor: 0x8ecae6,
+            textColor: "#1b1b1b",
+            font: "bold 32px Arial",
+            parent: wholeContainer
+        });
+        this.shopActionButton.background.on("pointerup", () => {
+            this.handleShopAction(getWeaponDefinition(this.focusedWeaponId));
+        });
+        const backButton = createTextButton(this, {
+            x: -690,
+            y: 385,
+            width: 280,
+            height: 100,
+            label: "Main Menu",
+            backgroundColor: 0x3fafaa,
+            parent: wholeContainer
+        });
+        backButton.background.on("pointerup", () => {
+            this.menuLeave(wholeContainer, "ShopMenu", "MainMenu");
+        });
+        this.refreshShopState();
+        this.tweens.add({
+            targets: wholeContainer,
+            y: 1080 / 2,
+            duration: 500,
+            ease: "Cubic.out"
+        });
+    }
+    handleShopAction(weapon) {
+        if (isWeaponUnlocked(this.playerProfile, weapon.id)) {
+            this.playerProfile = selectWeaponForProfile(weapon.id);
+            this.focusedWeaponId = weapon.id;
+            this.shopStatusText.setText(`${weapon.name} equipped.`);
+            this.refreshShopState();
+            return;
+        }
+        const purchaseResult = purchaseWeaponForProfile(weapon.id);
+        this.playerProfile = purchaseResult.profile;
+        this.focusedWeaponId = this.playerProfile.selectedWeaponId;
+        this.shopStatusText.setText(purchaseResult.message);
+        this.refreshShopState();
+    }
+    focusShopWeapon(weaponId) {
+        this.focusedWeaponId = weaponId;
+        this.refreshShopState();
+    }
+    refreshShopState() {
+        var _a;
+        this.shopMoneyText.setText(`Money: $${this.playerProfile.currency}`);
+        const focusedWeapon = getWeaponDefinition(this.focusedWeaponId);
+        const focusedUnlocked = isWeaponUnlocked(this.playerProfile, focusedWeapon.id);
+        const focusedSelected = this.playerProfile.selectedWeaponId === focusedWeapon.id;
+        this.detailPreviewBackground.setFillStyle(focusedWeapon.accentColor, 0.18);
+        this.detailPreviewBackground.setStrokeStyle(5, focusedWeapon.accentColor, 1);
+        this.detailPreviewName.setText(focusedWeapon.placeholderLabel);
+        this.detailWeaponName.setText(focusedWeapon.name);
+        this.detailDescription.setText(focusedWeapon.description);
+        this.detailStats.setText([
+            `Body Damage: ${focusedWeapon.projectile.damage.body}`,
+            `Head Damage: ${focusedWeapon.projectile.damage.head}`,
+            `Shot Speed: x${focusedWeapon.powerMultiplier.toFixed(2)}`,
+            `Pierce: ${(_a = focusedWeapon.projectile.pierceCount) !== null && _a !== void 0 ? _a : 0}`,
+            focusedWeapon.cost > 0 ? `Price: $${focusedWeapon.cost}` : "Included from the start"
+        ].join("\n"));
+        this.detailState.setText(focusedSelected
+            ? "Currently equipped"
+            : focusedUnlocked
+                ? "Unlocked and ready to equip"
+                : `Locked until you buy it for $${focusedWeapon.cost}`);
+        if (focusedSelected) {
+            this.shopActionButton.label.setText("Equipped");
+        }
+        else if (focusedUnlocked) {
+            this.shopActionButton.label.setText("Equip Weapon");
+        }
+        else {
+            this.shopActionButton.label.setText(`Buy for $${focusedWeapon.cost}`);
+        }
+        this.shopActionButton.background.setFillStyle(focusedWeapon.accentColor, 1);
+        this.shopCards.forEach((card) => {
+            const unlocked = isWeaponUnlocked(this.playerProfile, card.weapon.id);
+            const selected = this.playerProfile.selectedWeaponId === card.weapon.id;
+            const focused = this.focusedWeaponId === card.weapon.id;
+            card.tileBackground.setStrokeStyle(focused ? 8 : 5, card.weapon.accentColor, 1);
+            card.tileBackground.setFillStyle(focused ? 0xffffff : 0xfafcf9, 1);
+            if (selected) {
+                card.stateText.setText("Equipped");
+                return;
+            }
+            if (unlocked) {
+                card.stateText.setText("Unlocked");
+                return;
+            }
+            card.stateText.setText(`$${card.weapon.cost}`);
+        });
+    }
+}
 const game = new Phaser.Game({
     type: Phaser.AUTO,
     backgroundColor: "#2beaff",
@@ -1357,7 +1928,7 @@ const game = new Phaser.Game({
         width: 1920,
         height: 1080
     },
-    scene: [MainMenu, PauseScene, SummaryScene, LevelOne, LevelTwo, LevelThree, TimedLevel, Credits],
+    scene: [MainMenu, ShopMenu, PauseScene, SummaryScene, LevelOne, LevelTwo, LevelThree, TimedLevel, Credits],
     title: "Physics Game"
 });
 //# sourceMappingURL=game.js.map

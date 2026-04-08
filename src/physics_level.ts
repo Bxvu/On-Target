@@ -24,7 +24,9 @@ const WORLD_BOUNDS = {
 
 const HUD_STYLES = {
     charge: { font: "20px Arial", fill: "#ffff00" },
-    playerHealth: { font: "20px Arial", fill: "#ff1010" }
+    playerHealth: { font: "20px Arial", fill: "#ff1010" },
+    currency: { font: "32px Arial", fill: "#1b1b1b" },
+    weapon: { font: "24px Arial", fill: "#1b1b1b" }
 };
 
 class LevelScene extends LooseScene {
@@ -55,7 +57,9 @@ class LevelScene extends LooseScene {
         this.levelScale = this.levelData.scale != null ? this.levelData.scale : 1;
         this.ragdollFactory = new HumanoidFactory(this);
         this.matter.world.engine.timing.timeScale = 1;
-        this.playerLoadout = DEFAULT_PLAYER_LOADOUT;
+        this.playerProfile = loadPlayerProfile();
+        this.playerLoadout = createPlayerLoadout(this.playerProfile.selectedWeaponId);
+        this.nextCombatantId = 0;
 
         this.bowStream = false;
         this.instaCharge = false;
@@ -66,6 +70,7 @@ class LevelScene extends LooseScene {
         this.arrowsShot = 0;
         this.arrowsHit = 0;
         this.kills = 0;
+        this.currencyEarned = 0;
 
         this.spawnedArrows = this.createArrowCollection("player");
         this.opponentArrows = this.createArrowCollection("enemy");
@@ -122,7 +127,15 @@ class LevelScene extends LooseScene {
     createHud(): void {
         this.chargeDisplay = this.add.text(0, 0, "Charge: 0", HUD_STYLES.charge);
         this.chargeDisplay.setOrigin(0.5, 0.5).setDepth(10);
+        this.currencyDisplay = this.add.text(960, 52, "", HUD_STYLES.currency).setOrigin(0.5, 0.5).setDepth(25);
+        this.weaponDisplay = this.add.text(960, 92, "", HUD_STYLES.weapon).setOrigin(0.5, 0.5).setDepth(25);
+        this.refreshEconomyDisplay();
         this.createSystemButtons();
+    }
+
+    refreshEconomyDisplay(): void {
+        this.currencyDisplay.setText(`Money: $${this.playerProfile.currency}`);
+        this.weaponDisplay.setText(`Weapon: ${this.playerLoadout.weapon.name}`);
     }
 
     createSystemButtons(): void {
@@ -273,7 +286,15 @@ class LevelScene extends LooseScene {
     }
 
     firePlayerArrow(power: number): void {
-        this.shootArrow(power, this.levelScale, this.bow, this.mousex, this.mousey, this.playerLoadout.projectile, this.spawnedArrows);
+        this.shootArrow(
+            power * this.playerLoadout.powerMultiplier,
+            this.levelScale,
+            this.bow,
+            this.mousex,
+            this.mousey,
+            this.playerLoadout.projectile,
+            this.spawnedArrows
+        );
         this.arrowsShot += 1;
     }
 
@@ -445,7 +466,9 @@ class LevelScene extends LooseScene {
             duration: this.sceneDuration,
             currentLevel: this.currentLevel,
             nextLevel: this.nextLevel,
-            kills: this.kills
+            kills: this.kills,
+            currencyEarned: this.currencyEarned,
+            totalCurrency: this.playerProfile.currency
         } as SummarySceneData);
 
         this.plugins.get("rexkawaseblurpipelineplugin").add(this.cameras.main, {
@@ -470,13 +493,13 @@ class LevelScene extends LooseScene {
     }
 
     spawnEnemy(config: EnemySpawnConfig): RagdollPerson {
-        const enemy = this.ragdollFactory.createEnemy(config.x, config.y, config.scale, {
+        const enemy = this.assignCombatId(this.ragdollFactory.createEnemy(config.x, config.y, config.scale, {
             staticBody: config.staticBody,
             health: config.health,
             flip: config.flip,
             attackInterval: config.attackInterval,
             delayAttack: config.attackDelay
-        });
+        }));
 
         enemy.archetype = config.archetype;
         enemy.spawnConfig = config;
@@ -523,11 +546,17 @@ class LevelScene extends LooseScene {
     }
 
     constructPlayer(x: number, y: number, scale: number, staticBody: boolean, health: number, flip: boolean): RagdollPerson {
-        return this.ragdollFactory.createPlayer(x, y, scale, {
+        return this.assignCombatId(this.ragdollFactory.createPlayer(x, y, scale, {
             staticBody,
             health,
             flip
-        });
+        }));
+    }
+
+    assignCombatId(person: RagdollPerson): RagdollPerson {
+        person.combatId = `combatant-${this.nextCombatantId}`;
+        this.nextCombatantId += 1;
+        return person;
     }
 
     spawnArrow(x: number, y: number, angle: number, velocityX: number, velocityY: number, scale: number, projectileConfig: ProjectileConfig): MatterArrow {
@@ -539,6 +568,13 @@ class LevelScene extends LooseScene {
         arrow.alreadyHit = false;
         arrow.projectileConfig = projectileConfig;
         arrow.body.collisionFilter.group = projectileConfig.collisionGroup;
+        arrow.hitTargetIds = [];
+        arrow.piercesRemaining = projectileConfig.pierceCount ?? 0;
+
+        if (projectileConfig.tint != null) {
+            arrow.setTint(projectileConfig.tint);
+        }
+
         return arrow;
     }
 
@@ -602,8 +638,16 @@ class LevelScene extends LooseScene {
     }
 
     createPlayer(x: number, y: number, scale: number, health: number): { player: RagdollPerson; playerContainer: GameContainer; bowSprite: MatterImage; aimArrow: MatterImage } {
-        const aimArrow = this.createStaticWeaponSprite("arrow", scale);
-        const bowSprite = this.createStaticWeaponSprite("bow", scale);
+        const aimArrow = this.createStaticWeaponSprite(
+            this.playerLoadout.projectile.texture,
+            scale,
+            this.playerLoadout.projectile.tint
+        );
+        const bowSprite = this.createStaticWeaponSprite(
+            this.playerLoadout.weapon.bowTexture,
+            scale,
+            this.playerLoadout.weapon.bowTint
+        );
         const player = this.constructPlayer(x, y, scale, false, health, false);
         const playerContainer = this.add.container(x, y);
 
@@ -611,10 +655,15 @@ class LevelScene extends LooseScene {
         return { player, playerContainer, bowSprite, aimArrow };
     }
 
-    createStaticWeaponSprite(texture: string, scale: number): MatterImage {
+    createStaticWeaponSprite(texture: string, scale: number, tint?: number): MatterImage {
         const weaponSprite = this.matter.add.image(100, 0, texture, null);
         weaponSprite.setStatic(true);
         weaponSprite.setScale(0.2 * scale);
+
+        if (tint != null) {
+            weaponSprite.setTint(tint);
+        }
+
         return weaponSprite;
     }
 
@@ -641,47 +690,58 @@ class LevelScene extends LooseScene {
     }
 
     handleArrowCollision(arrow: MatterArrow, arrowList: ArrowCollection, person: RagdollPerson, part: MatterBody): void {
-        if (!arrow.alreadyHit) {
-            arrow.bodyConstraint = this.matter.add.constraint(arrow, part, 0, 0, {
-                pointA: {
-                    x: (0.5 - Math.random()) * 75,
-                    y: (0.5 - Math.random()) * 30
-                },
-                pointB: { x: 0, y: 0 },
-                render: { visible: true }
+        if (arrow.alreadyHit || arrow.hitTargetIds.includes(person.combatId)) {
+            return;
+        }
+
+        const shouldStick = arrow.piercesRemaining <= 0;
+        arrow.hitTargetIds.push(person.combatId);
+
+        if (person.health > 0) {
+            person.linkedSprites.forEach((sprite) => {
+                sprite.setTint(0xff0000);
             });
 
-            person.linkedArrows.push(arrow);
-            arrow.body.collisionFilter.group = part.collisionFilter.group;
-            arrow.alreadyHit = true;
+            person.health -= part.label === "head"
+                ? arrow.projectileConfig.damage.head
+                : arrow.projectileConfig.damage.body;
 
-            if (person.health > 0) {
+            if (arrowList.fromplayer) {
+                this.events.emit("arrowHit", 1);
+            }
+
+            this.time.delayedCall(250, () => {
                 person.linkedSprites.forEach((sprite) => {
-                    sprite.setTint(0xff0000);
+                    sprite.clearTint();
                 });
+            });
 
-                person.health -= part.label === "head"
-                    ? arrow.projectileConfig.damage.head
-                    : arrow.projectileConfig.damage.body;
-
-                if (arrowList.fromplayer) {
-                    this.events.emit("arrowHit", 1);
-                }
-
-                this.time.delayedCall(250, () => {
-                    person.linkedSprites.forEach((sprite) => {
-                        sprite.clearTint();
-                    });
-                });
-
-                if (person.health <= 0) {
-                    this.handlePersonDeath(person);
-                }
+            if (person.health <= 0) {
+                this.handlePersonDeath(person);
             }
         }
-        else if (person.health <= 0) {
-            this.handlePersonDeath(person);
+
+        if (shouldStick) {
+            this.stickArrowToPart(arrow, person, part);
+            return;
         }
+
+        arrow.piercesRemaining -= 1;
+    }
+
+    stickArrowToPart(arrow: MatterArrow, person: RagdollPerson, part: MatterBody): void {
+        arrow.bodyConstraint = this.matter.add.constraint(arrow, part, 0, 0, {
+            pointA: {
+                x: (0.5 - Math.random()) * 75,
+                y: (0.5 - Math.random()) * 30
+            },
+            pointB: { x: 0, y: 0 },
+            render: { visible: true }
+        });
+
+        person.linkedArrows.push(arrow);
+        arrow.body.collisionFilter.group = part.collisionFilter.group;
+        arrow.alreadyHit = true;
     }
 
     handlePersonDeath(person: RagdollPerson): void {
@@ -690,6 +750,21 @@ class LevelScene extends LooseScene {
         }
 
         person.dead = true;
+
+        if (person !== this.player) {
+            this.kills += 1;
+
+            const reward = person.archetype?.currencyReward ?? 0;
+
+            if (reward > 0) {
+                this.playerProfile = updatePlayerProfile((profile) => {
+                    profile.currency += reward;
+                });
+                this.currencyEarned += reward;
+                this.refreshEconomyDisplay();
+                this.showCurrencyReward(person, reward);
+            }
+        }
 
         if (person.healthDisplay) {
             person.healthDisplay.setText("");
@@ -724,6 +799,26 @@ class LevelScene extends LooseScene {
                 ease: "Cubic.easeOut",
                 repeat: 0
             });
+        });
+    }
+
+    showCurrencyReward(person: RagdollPerson, reward: number): void {
+        const rewardText = this.add.text(
+            person.parts.head.position.x,
+            person.parts.head.position.y - 60,
+            `+$${reward}`,
+            { font: "bold 28px Arial", fill: "#ffd166" }
+        ).setOrigin(0.5, 0.5).setDepth(30);
+
+        this.tweens.add({
+            targets: rewardText,
+            y: rewardText.y - 60,
+            alpha: { from: 1, to: 0 },
+            duration: 900,
+            ease: "Cubic.out",
+            onComplete: () => {
+                rewardText.destroy();
+            }
         });
     }
 }

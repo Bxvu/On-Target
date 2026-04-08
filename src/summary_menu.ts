@@ -12,6 +12,8 @@ class SummaryScene extends Menu {
         this.currentLevel = data.currentLevel;
         this.nextLevel = data.nextLevel;
         this.kills = data.kills;
+        this.currencyEarned = data.currencyEarned;
+        this.totalCurrency = data.totalCurrency;
     }
 
     preload(): void {
@@ -20,7 +22,7 @@ class SummaryScene extends Menu {
 
     create(): void {
         const summaryBox = this.add.container(1920 / 2, -1000);
-        const entireBox = this.add.rexRoundRectangle(0, 0, 750, 750, 30, 0x99b0af, 1);
+        const entireBox = this.add.rexRoundRectangle(0, 0, 820, 820, 30, 0x99b0af, 1);
         entireBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
 
         summaryBox.add([entireBox]);
@@ -30,7 +32,10 @@ class SummaryScene extends Menu {
             : this.add.text(0, -310, "Summary", { font: "100px Arial", fill: "#000000" });
         summaryTitle.setOrigin(0.5);
 
-        const accuracy = `Accuracy: ${((this.arrowsHit / this.arrowsShot) * 100).toFixed(3)}%`;
+        const accuracyValue = this.arrowsShot > 0
+            ? ((this.arrowsHit / this.arrowsShot) * 100).toFixed(3)
+            : "0.000";
+        const accuracy = `Accuracy: ${accuracyValue}%`;
         const accuracyText = this.add.text(0, -180, accuracy, { font: "50px Arial", fill: "#a0ffa0" });
         accuracyText.setOrigin(0.5);
 
@@ -50,25 +55,32 @@ class SummaryScene extends Menu {
             duration = `Time Taken: ${(this.timeTaken / 1000).toFixed(3)}s`;
         }
 
-        const durationText = this.add.text(0, 20, duration, { font: "50px Arial", fill: "#a0ffa0" });
+        const durationText = this.add.text(0, 10, duration, { font: "50px Arial", fill: "#a0ffa0" });
         durationText.setOrigin(0.5);
 
-        summaryBox.add([summaryTitle, accuracyText, healthText, durationText]);
+        const currencyText = this.add.text(
+            0,
+            105,
+            `Currency: +$${this.currencyEarned}   Total: $${this.totalCurrency}`,
+            { font: "42px Arial", fill: "#ffd166" }
+        ).setOrigin(0.5);
 
-        const nextLevelBox = this.add.rexRoundRectangle((750 / 2) - (750 / 4), 200, 275, 200, 30, 0xffafaa, 1);
+        summaryBox.add([summaryTitle, accuracyText, healthText, durationText, currencyText]);
+
+        const nextLevelBox = this.add.rexRoundRectangle((750 / 2) - (750 / 4), 250, 275, 200, 30, 0xffafaa, 1);
         nextLevelBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         nextLevelBox.setInteractive();
 
-        const mainMenuBox = this.add.rexRoundRectangle(-(750 / 4), 200, 275, 200, 30, 0xffffaa, 1);
+        const mainMenuBox = this.add.rexRoundRectangle(-(750 / 4), 250, 275, 200, 30, 0xffffaa, 1);
         mainMenuBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         mainMenuBox.setInteractive();
 
         summaryBox.add([nextLevelBox, mainMenuBox]);
 
-        const mainMenuText = this.add.text(-(750 / 4), 200, " Main\nMenu", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
+        const mainMenuText = this.add.text(-(750 / 4), 250, " Main\nMenu", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
         const nextLevelText = (this.health <= 0 || this.currentLevel === "TimedLevel")
-            ? this.add.text((750 / 2) - (750 / 4), 200, "Retry", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5)
-            : this.add.text((750 / 2) - (750 / 4), 200, " Next\nLevel", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
+            ? this.add.text((750 / 2) - (750 / 4), 250, "Retry", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5)
+            : this.add.text((750 / 2) - (750 / 4), 250, " Next\nLevel", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
 
         summaryBox.add([mainMenuText, nextLevelText]);
 
