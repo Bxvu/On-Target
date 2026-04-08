@@ -29,6 +29,8 @@ const HUD_STYLES = {
     weapon: { font: "24px Arial", fill: "#1b1b1b" }
 };
 
+const ENEMY_STATUS_ORDER: EnemyStatusEffectKind[] = ["bounty", "burn", "scatter", "jam"];
+
 class LevelScene extends LooseScene {
     init(data: LevelInitData = {}): void {
         this.levelData = data;
@@ -106,7 +108,7 @@ class LevelScene extends LooseScene {
         });
 
         up.on("up", () => {
-            this.scene.restart({ scale: 1 });
+            this.scene.restart(this.levelData);
         });
 
         escape.on("down", () => {
@@ -336,9 +338,17 @@ class LevelScene extends LooseScene {
     updateHumanoidAI(delta: number): void {
         this.humanoids.forEach((humanoid: RagdollPerson) => {
             if (humanoid.health > 0) {
+                this.updateHumanoidStatusEffects(humanoid, delta);
+
+                if (humanoid.health <= 0) {
+                    return;
+                }
+
                 humanoid.healthDisplay!.x = humanoid.parts.head.position.x;
                 humanoid.healthDisplay!.y = humanoid.parts.head.position.y;
                 humanoid.healthDisplay!.setText(`${humanoid.health}`);
+                humanoid.statusDisplay!.x = humanoid.parts.head.position.x;
+                humanoid.statusDisplay!.y = humanoid.parts.head.position.y - 34;
                 humanoid.timer! += delta;
 
                 if (humanoid.timer! >= humanoid.attackInterval!) {
@@ -362,6 +372,184 @@ class LevelScene extends LooseScene {
                 }
             }
         });
+    }
+
+    updateHumanoidStatusEffects(humanoid: RagdollPerson, delta: number): void {
+        const activeEffects = humanoid.activeStatusEffects;
+
+        if (!activeEffects) {
+            return;
+        }
+
+        let pendingBurnDamage = 0;
+
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            const activeStatus = activeEffects[statusKind];
+
+            if (!activeStatus) {
+                return;
+            }
+
+            if (activeStatus.remainingMs != null) {
+                activeStatus.remainingMs -= delta;
+
+                if (activeStatus.remainingMs <= 0) {
+                    delete activeEffects[statusKind];
+                    return;
+                }
+            }
+
+            if (activeStatus.effect.kind === "burn") {
+                activeStatus.tickTimerMs += delta;
+
+                while (activeStatus.tickTimerMs >= activeStatus.effect.tickIntervalMs) {
+                    activeStatus.tickTimerMs -= activeStatus.effect.tickIntervalMs;
+                    pendingBurnDamage += activeStatus.effect.damagePerTick * activeStatus.stacks;
+                }
+            }
+        });
+
+        if (pendingBurnDamage > 0) {
+            this.applyStatusDamage(humanoid, pendingBurnDamage);
+        }
+
+        this.refreshHumanoidStatusModifiers(humanoid);
+        this.refreshHumanoidStatusDisplay(humanoid);
+    }
+
+    applyStatusDamage(person: RagdollPerson, damage: number): void {
+        if (person.health <= 0) {
+            return;
+        }
+
+        person.linkedSprites.forEach((sprite) => {
+            sprite.setTint(0xff7b00);
+        });
+
+        person.health -= damage;
+
+        this.time.delayedCall(120, () => {
+            person.linkedSprites.forEach((sprite) => {
+                sprite.clearTint();
+            });
+        });
+
+        if (person.health <= 0) {
+            this.handlePersonDeath(person);
+        }
+    }
+
+    applyProjectileStatusEffects(person: RagdollPerson, statusEffects?: EnemyStatusEffectConfig[]): void {
+        if (!statusEffects || statusEffects.length === 0 || person === this.player || !person.activeStatusEffects) {
+            return;
+        }
+
+        statusEffects.forEach((statusEffect) => {
+            this.applyEnemyStatusEffect(person, statusEffect);
+        });
+
+        this.refreshHumanoidStatusModifiers(person);
+        this.refreshHumanoidStatusDisplay(person);
+    }
+
+    applyEnemyStatusEffect(person: RagdollPerson, statusEffect: EnemyStatusEffectConfig): void {
+        const activeEffects = person.activeStatusEffects!;
+        const existingStatus = activeEffects[statusEffect.kind];
+        const maxStacks = Math.max(1, statusEffect.maxStacks ?? 1);
+        const durationMs = statusEffect.durationMs != null && statusEffect.durationMs > 0
+            ? statusEffect.durationMs
+            : undefined;
+
+        if (!existingStatus) {
+            activeEffects[statusEffect.kind] = {
+                effect: { ...statusEffect },
+                stacks: 1,
+                remainingMs: durationMs,
+                tickTimerMs: 0
+            };
+            return;
+        }
+
+        existingStatus.effect = { ...statusEffect };
+        existingStatus.stacks = Math.min(existingStatus.stacks + 1, maxStacks);
+
+        if (durationMs != null) {
+            existingStatus.remainingMs = durationMs;
+        }
+    }
+
+    refreshHumanoidStatusModifiers(humanoid: RagdollPerson): void {
+        let rewardMultiplier = 1;
+        let aimSpreadMultiplier = 1;
+        let attackIntervalMultiplier = 1;
+        let throwForceMultiplier = 1;
+
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            const activeStatus = humanoid.activeStatusEffects?.[statusKind];
+
+            if (!activeStatus) {
+                return;
+            }
+
+            switch (activeStatus.effect.kind) {
+            case "bounty":
+                rewardMultiplier += activeStatus.effect.rewardMultiplierPerStack * activeStatus.stacks;
+                break;
+            case "scatter":
+                aimSpreadMultiplier += activeStatus.effect.aimSpreadMultiplierPerStack * activeStatus.stacks;
+                throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                break;
+            case "jam":
+                attackIntervalMultiplier += activeStatus.effect.attackIntervalMultiplierPerStack * activeStatus.stacks;
+                throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                break;
+            default:
+                break;
+            }
+        });
+
+        humanoid.rewardMultiplier = rewardMultiplier;
+        humanoid.aimSpreadMultiplier = aimSpreadMultiplier;
+        humanoid.throwForceMultiplier = Math.max(0.2, throwForceMultiplier);
+
+        if (humanoid.baseAttackInterval != null) {
+            humanoid.attackInterval = Math.max(250, humanoid.baseAttackInterval * attackIntervalMultiplier);
+        }
+    }
+
+    refreshHumanoidStatusDisplay(humanoid: RagdollPerson): void {
+        if (!humanoid.statusDisplay) {
+            return;
+        }
+
+        const statusSegments: string[] = [];
+
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            const activeStatus = humanoid.activeStatusEffects?.[statusKind];
+
+            if (!activeStatus) {
+                return;
+            }
+
+            switch (activeStatus.effect.kind) {
+            case "bounty":
+                statusSegments.push(`Cash x${(1 + activeStatus.effect.rewardMultiplierPerStack * activeStatus.stacks).toFixed(2)}`);
+                break;
+            case "burn":
+                statusSegments.push(`Burn ${activeStatus.stacks}`);
+                break;
+            case "scatter":
+                statusSegments.push(`Scatter ${activeStatus.stacks}`);
+                break;
+            case "jam":
+                statusSegments.push(`Slow ${activeStatus.stacks}`);
+                break;
+            default:
+                break;
+            }
+        });
+
+        humanoid.statusDisplay.setText(statusSegments.join("  |  "));
     }
 
     rollAttackPower(humanoid: RagdollPerson): number {
@@ -513,7 +701,14 @@ class LevelScene extends LooseScene {
     humanoidAttack(humanoid: RagdollPerson, scale: number, power: number, player: RagdollPerson): void {
         const spawnpoint = humanoid.throwingArm;
         const attackConfig = humanoid.archetype!.attack;
-        spawnpoint.force = { x: attackConfig.throwForceX * scale, y: attackConfig.throwForceY * scale };
+        const aimSpreadMultiplier = humanoid.aimSpreadMultiplier ?? 1;
+        const throwForceMultiplier = humanoid.throwForceMultiplier ?? 1;
+        const aimSpreadX = attackConfig.aimSpreadX * aimSpreadMultiplier;
+        const aimSpreadY = attackConfig.aimSpreadY * aimSpreadMultiplier;
+        spawnpoint.force = {
+            x: attackConfig.throwForceX * scale * throwForceMultiplier,
+            y: attackConfig.throwForceY * scale * throwForceMultiplier
+        };
 
         const resolvedScale = Math.abs(scale);
         const targetBody = player.bodies[Math.floor(Math.random() * player.bodies.length)];
@@ -521,8 +716,8 @@ class LevelScene extends LooseScene {
         const angle = Phaser.Math.Angle.Between(
             spawnpoint.position.x,
             spawnpoint.position.y,
-            targetPosition.x + (Math.random() * attackConfig.aimSpreadX * 2 - attackConfig.aimSpreadX),
-            targetPosition.y + (Math.random() * attackConfig.aimSpreadY * 2 - attackConfig.aimSpreadY)
+            targetPosition.x + (Math.random() * aimSpreadX * 2 - aimSpreadX),
+            targetPosition.y + (Math.random() * aimSpreadY * 2 - aimSpreadY)
         );
         const speed = power * resolvedScale;
         const velocityX = Math.cos(angle) * speed;
@@ -716,6 +911,10 @@ class LevelScene extends LooseScene {
                 });
             });
 
+            if (arrowList.fromplayer) {
+                this.applyProjectileStatusEffects(person, arrow.projectileConfig.statusEffects);
+            }
+
             if (person.health <= 0) {
                 this.handlePersonDeath(person);
             }
@@ -754,7 +953,8 @@ class LevelScene extends LooseScene {
         if (person !== this.player) {
             this.kills += 1;
 
-            const reward = person.archetype?.currencyReward ?? 0;
+            const baseReward = person.archetype?.currencyReward ?? 0;
+            const reward = Math.max(0, Math.round(baseReward * (person.rewardMultiplier ?? 1)));
 
             if (reward > 0) {
                 this.playerProfile = updatePlayerProfile((profile) => {
@@ -769,6 +969,12 @@ class LevelScene extends LooseScene {
         if (person.healthDisplay) {
             person.healthDisplay.setText("");
         }
+
+        if (person.statusDisplay) {
+            person.statusDisplay.setText("");
+        }
+
+        person.activeStatusEffects = {};
 
         person.bodies.forEach((bodyPart) => {
             if (bodyPart.label === "chest") {
@@ -820,5 +1026,37 @@ class LevelScene extends LooseScene {
                 rewardText.destroy();
             }
         });
+    }
+}
+
+class ManualLevelScene extends LevelScene {
+    constructor(private manualLevelKey: ManualLevelKey) {
+        super(manualLevelKey);
+    }
+
+    create(): void {
+        super.create();
+
+        const definition = getManualLevelDefinition(this.manualLevelKey);
+        this.currentLevel = definition.sceneKey;
+        this.nextLevel = definition.nextLevel;
+
+        if (definition.instructions) {
+            const instructions = this.add.text(
+                definition.instructions.x,
+                definition.instructions.y,
+                definition.instructions.text,
+                {
+                    font: definition.instructions.font ?? "bold 40px Arial",
+                    fill: definition.instructions.fill ?? "#ffffff"
+                }
+            );
+
+            this.events.once("levelEnd", () => {
+                instructions.destroy();
+            });
+        }
+
+        this.humanoids.push(...this.spawnEnemies(definition.createEnemyConfigs(this.levelScale)));
     }
 }

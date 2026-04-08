@@ -13,6 +13,7 @@ class MainMenu extends Menu {
     create(): void {
         const playerProfile = loadPlayerProfile();
         const selectedWeapon = getWeaponDefinition(playerProfile.selectedWeaponId);
+        const manualLevels = getManualLevelDefinitions();
 
         const fullscreenButton = createTextButton(this, {
             x: 1785,
@@ -43,76 +44,72 @@ class MainMenu extends Menu {
 
         wholeContainer.add([title, bankText, weaponText]);
 
-        const buttonConfigs: Array<{
+        const manualColumns = Math.max(1, Math.min(3, manualLevels.length));
+        const manualRows = Math.ceil(manualLevels.length / manualColumns);
+        const manualSpacingX = 320;
+        const manualSpacingY = 195;
+        const manualStartX = -((manualColumns - 1) * manualSpacingX) / 2;
+        const manualStartY = manualRows > 1 ? -80 : 0;
+
+        manualLevels.forEach((level, index) => {
+            const column = index % manualColumns;
+            const row = Math.floor(index / manualColumns);
+            const button = createTextButton(this, {
+                x: manualStartX + column * manualSpacingX,
+                y: manualStartY + row * manualSpacingY,
+                width: 280,
+                height: 160,
+                label: level.label,
+                backgroundColor: level.menuColor,
+                font: "bold 42px Arial",
+                parent: wholeContainer
+            });
+
+            button.background.on("pointerup", () => {
+                this.menuLeave(wholeContainer, "MainMenu", level.sceneKey);
+            });
+        });
+
+        const utilityButtonConfigs: Array<{
             x: number;
-            y: number;
             label: string;
             color: number;
             scene: SceneKey;
-            config?: MenuTransitionConfig;
         }> = [
             {
-                x: -525,
-                y: -40,
-                label: "Level 1",
-                color: 0x3fafaa,
-                scene: "LevelOne",
-                config: { scale: 1, canCharge: false }
-            },
-            {
-                x: 0,
-                y: -40,
-                label: "Level 2",
-                color: 0xf0f6af,
-                scene: "LevelTwo",
-                config: { scale: 1, canCharge: false }
-            },
-            {
-                x: 525,
-                y: -40,
-                label: "Level 3",
-                color: 0x8ff00f,
-                scene: "LevelThree",
-                config: { scale: 1, canCharge: false }
-            },
-            {
-                x: -525,
-                y: 240,
+                x: -420,
                 label: "Timed\nMode",
                 color: 0xffafaa,
-                scene: "TimedLevel",
-                config: { scale: 1, canCharge: false }
+                scene: "TimedLevel"
             },
             {
                 x: 0,
-                y: 240,
                 label: "Credits",
                 color: 0xffffaa,
                 scene: "Credits"
             },
             {
-                x: 525,
-                y: 240,
+                x: 420,
                 label: "Shop",
                 color: 0xcdb4db,
                 scene: "ShopMenu"
             }
         ];
 
-        buttonConfigs.forEach((buttonConfig) => {
+        utilityButtonConfigs.forEach((buttonConfig) => {
             const button = createTextButton(this, {
                 x: buttonConfig.x,
-                y: buttonConfig.y,
+                y: 300,
                 width: 300,
-                height: 210,
+                height: 170,
                 label: buttonConfig.label,
                 backgroundColor: buttonConfig.color,
-                font: "bold 46px Arial",
+                font: "bold 44px Arial",
                 parent: wholeContainer
             });
 
             button.background.on("pointerup", () => {
-                this.menuLeave(wholeContainer, "MainMenu", buttonConfig.scene, buttonConfig.config);
+                this.menuLeave(wholeContainer, "MainMenu", buttonConfig.scene);
             });
         });
 
@@ -398,6 +395,7 @@ class ShopMenu extends Menu {
             `Head Damage: ${focusedWeapon.projectile.damage.head}`,
             `Shot Speed: x${focusedWeapon.powerMultiplier.toFixed(2)}`,
             `Pierce: ${focusedWeapon.projectile.pierceCount ?? 0}`,
+            ...getProjectileStatusSummary(focusedWeapon.projectile),
             focusedWeapon.cost > 0 ? `Price: $${focusedWeapon.cost}` : "Included from the start"
         ].join("\n"));
         this.detailState.setText(

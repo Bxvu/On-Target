@@ -6,7 +6,7 @@ class LooseScene extends Phaser.Scene {
 }
 const PLAYER_PROFILE_STORAGE_KEY = "on-target-player-profile";
 function createWeaponProjectile(config) {
-    var _a;
+    var _a, _b;
     return {
         id: config.id,
         texture: "arrow",
@@ -16,7 +16,8 @@ function createWeaponProjectile(config) {
         maxActive: config.maxActive,
         damage: config.damage,
         tint: config.tint,
-        pierceCount: (_a = config.pierceCount) !== null && _a !== void 0 ? _a : 0
+        pierceCount: (_a = config.pierceCount) !== null && _a !== void 0 ? _a : 0,
+        statusEffects: (_b = config.statusEffects) === null || _b === void 0 ? void 0 : _b.map((effect) => (Object.assign({}, effect)))
     };
 }
 function createWeaponDefinition(config) {
@@ -32,6 +33,29 @@ function createWeaponDefinition(config) {
         accentColor: config.accentColor,
         placeholderLabel: config.placeholderLabel
     };
+}
+function formatModifierPercent(value) {
+    return `${Math.round(value * 100)}%`;
+}
+function describeEnemyStatusEffect(effect) {
+    switch (effect.kind) {
+        case "bounty":
+            return `Status: +${formatModifierPercent(effect.rewardMultiplierPerStack)} money per stack`;
+        case "burn":
+            return `Status: Burn ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`;
+        case "scatter":
+            return `Status: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} aim spread, -${formatModifierPercent(effect.throwForceReductionPerStack)} throw force per stack`;
+        case "jam":
+            return `Status: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay, -${formatModifierPercent(effect.throwForceReductionPerStack)} throw force per stack`;
+        default:
+            return "Status: None";
+    }
+}
+function getProjectileStatusSummary(projectile) {
+    if (!projectile.statusEffects || projectile.statusEffects.length === 0) {
+        return ["Status: None"];
+    }
+    return projectile.statusEffects.map((effect) => describeEnemyStatusEffect(effect));
 }
 const ENEMY_ARROW_CONFIG = {
     id: "enemy-arrow",
@@ -142,10 +166,36 @@ const WEAPON_CATALOG = [
             lifetimeMs: 7000,
             maxActive: 18,
             damage: {
-                body: -2,
+                body: -10,
                 head: 20
             },
-            tint: 0x94d2bd
+            tint: 0x94d2bd,
+            statusEffects: [{
+                    kind: "bounty",
+                    rewardMultiplierPerStack: 1,
+                    maxStacks: 1000
+                },
+                {
+                    kind: "jam",
+                    attackIntervalMultiplierPerStack: 0.3,
+                    throwForceReductionPerStack: 0.5,
+                    durationMs: 10000,
+                    maxStacks: 1000
+                },
+                {
+                    kind: "burn",
+                    damagePerTick: 1,
+                    tickIntervalMs: 100,
+                    durationMs: 500,
+                    maxStacks: 1
+                },
+                {
+                    kind: "scatter",
+                    aimSpreadMultiplierPerStack: 0.35,
+                    throwForceReductionPerStack: 0.15,
+                    durationMs: 10000,
+                    maxStacks: 1000
+                }]
         }
     }),
     createWeaponDefinition({
@@ -168,6 +218,116 @@ const WEAPON_CATALOG = [
             },
             tint: 0x7b2cbf,
             pierceCount: 2
+        }
+    }),
+    createWeaponDefinition({
+        id: "bounty-bow",
+        name: "Bounty Bow",
+        description: "Low damage, but every hit marks enemies for a fatter payout when they go down.",
+        cost: 70,
+        bowTint: 0xf9c74f,
+        powerMultiplier: 1,
+        accentColor: 0xf9c74f,
+        placeholderLabel: "Cash",
+        projectile: {
+            id: "bounty-arrow",
+            scale: 0.18,
+            lifetimeMs: 8000,
+            maxActive: 24,
+            damage: {
+                body: 1,
+                head: 2
+            },
+            tint: 0xf9c74f,
+            statusEffects: [{
+                    kind: "bounty",
+                    rewardMultiplierPerStack: 0.25,
+                    maxStacks: 4
+                }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "ember-bow",
+        name: "Ember Bow",
+        description: "Ignites targets with stacking burn damage that keeps chewing through tougher enemies.",
+        cost: 110,
+        bowTint: 0xf3722c,
+        powerMultiplier: 1.05,
+        accentColor: 0xf3722c,
+        placeholderLabel: "Burn",
+        projectile: {
+            id: "ember-arrow",
+            scale: 0.19,
+            lifetimeMs: 7600,
+            maxActive: 22,
+            damage: {
+                body: 1,
+                head: 3
+            },
+            tint: 0xf3722c,
+            statusEffects: [{
+                    kind: "burn",
+                    damagePerTick: 1,
+                    tickIntervalMs: 700,
+                    durationMs: 4200,
+                    maxStacks: 4
+                }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "scrambler-bow",
+        name: "Scrambler Bow",
+        description: "Debuff shots throw enemy aim off, making return fire drift wider and wider.",
+        cost: 95,
+        bowTint: 0x43aa8b,
+        powerMultiplier: 1,
+        accentColor: 0x43aa8b,
+        placeholderLabel: "Scatter",
+        projectile: {
+            id: "scrambler-arrow",
+            scale: 0.18,
+            lifetimeMs: 7800,
+            maxActive: 24,
+            damage: {
+                body: 1,
+                head: 3
+            },
+            tint: 0x43aa8b,
+            statusEffects: [{
+                    kind: "scatter",
+                    aimSpreadMultiplierPerStack: 0.35,
+                    throwForceReductionPerStack: 0.15,
+                    durationMs: 5000,
+                    maxStacks: 3
+                }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "ballast-bow",
+        name: "Ballast Bow",
+        description: "Heavy shots gum up the enemy rhythm and slow how often they can fire back.",
+        cost: 105,
+        bowTint: 0x577590,
+        powerMultiplier: 0.95,
+        accentColor: 0x577590,
+        placeholderLabel: "Slow",
+        projectile: {
+            id: "ballast-arrow",
+            scale: 0.2,
+            lifetimeMs: 7800,
+            maxActive: 20,
+            damage: {
+                body: 2,
+                head: 3
+            },
+            tint: 0x577590,
+            statusEffects: [{
+                    kind: "jam",
+                    attackIntervalMultiplierPerStack: 0.3,
+                    throwForceReductionPerStack: 0.5,
+                    durationMs: 5000,
+                    maxStacks: 5
+                }]
         }
     })
 ];
@@ -292,6 +452,140 @@ function purchaseWeaponForProfile(weaponId) {
 }
 function createEnemySpawnConfig(config) {
     return Object.assign({ staticBody: false, archetype: STANDARD_ENEMY_ARCHETYPE }, config);
+}
+const MANUAL_LEVEL_DEFINITIONS = [
+    {
+        sceneKey: "LevelOne",
+        label: "Level 1",
+        menuColor: 0x3fafaa,
+        nextLevel: "LevelTwo",
+        instructions: {
+            x: 200,
+            y: 150,
+            text: "Hold Click to Charge the Bow\nLet Go to Shoot the Arrow in the direction of your Mouse\n\nEach Arrow does 1 DMG\nHeadshotting Opponents does 3 DMG\nOpponents can shoot at you\nTheir Arm will glow orange when they start throwing arrows\nYou have 10 Health",
+            font: "bold 40px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1300,
+                y: 600,
+                scale: levelScale,
+                health: 3,
+                flip: true,
+                attackInterval: 3000,
+                attackDelay: 2
+            })
+        ]
+    },
+    {
+        sceneKey: "LevelTwo",
+        label: "Level 2",
+        menuColor: 0xf0f6af,
+        nextLevel: "LevelThree",
+        instructions: {
+            x: 200,
+            y: 300,
+            text: "There is no lore to this game,\nidk why these guys are floating\n(other than making it so \nyou have to aim in the air)",
+            font: "bold 40px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1300,
+                y: 700,
+                scale: levelScale + 0.2,
+                health: 5,
+                flip: true,
+                attackInterval: 2000,
+                attackDelay: 2
+            }),
+            createEnemySpawnConfig({
+                x: 1000,
+                y: 500,
+                scale: levelScale - 0.3,
+                health: 2,
+                flip: true,
+                attackInterval: 3000,
+                attackDelay: 3
+            }),
+            createEnemySpawnConfig({
+                x: 1600,
+                y: 300,
+                scale: levelScale - 0.5,
+                health: 1,
+                flip: true,
+                attackInterval: 4000,
+                attackDelay: 1
+            })
+        ]
+    },
+    {
+        sceneKey: "LevelThree",
+        label: "Level 3",
+        menuColor: 0x8ff00f,
+        nextLevel: "LevelFour",
+        instructions: {
+            x: 200,
+            y: 200,
+            text: "Extra Stuff:\nPress the Down Arrow to toggle bow stream cheat\nPress the Up Arrow to reset the level\nPress the Right Arrow to have your shots instantly charge\nThere is no Konami Code unfortunately",
+            font: "bold 25px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => {
+            const enemyConfigs = [
+                createEnemySpawnConfig({
+                    x: 1250,
+                    y: 400,
+                    scale: levelScale + 0.5,
+                    health: 9,
+                    flip: true,
+                    attackInterval: 5000,
+                    attackDelay: 5
+                })
+            ];
+            const weirdAmalgamX = 1700;
+            const weirdAmalgamY = 600;
+            const weirdAmalgamScale = levelScale - 0.6;
+            const humanoidCount = 10;
+            for (let count = 0; count < humanoidCount; count++) {
+                enemyConfigs.push(createEnemySpawnConfig({
+                    x: weirdAmalgamX - count,
+                    y: weirdAmalgamY,
+                    scale: weirdAmalgamScale,
+                    health: 1,
+                    flip: true,
+                    attackInterval: Math.random() * 500 + 750,
+                    attackDelay: Math.random() * 2 + 10
+                }));
+            }
+            return enemyConfigs;
+        }
+    },
+    {
+        sceneKey: "LevelFour",
+        label: "Level 4",
+        menuColor: 0x6d9dc5,
+        nextLevel: "MainMenu",
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1250,
+                y: 400,
+                scale: levelScale + 0.5,
+                health: 25,
+                flip: true,
+                attackInterval: 2000,
+                attackDelay: 0
+            })
+        ]
+    }
+];
+function getManualLevelDefinitions() {
+    return MANUAL_LEVEL_DEFINITIONS;
+}
+function getManualLevelDefinition(sceneKey) {
+    var _a;
+    return (_a = MANUAL_LEVEL_DEFINITIONS.find((definition) => definition.sceneKey === sceneKey)) !== null && _a !== void 0 ? _a : MANUAL_LEVEL_DEFINITIONS[0];
 }
 function createTextButton(scene, config) {
     var _a, _b, _c, _d, _e;
@@ -421,13 +715,19 @@ class HumanoidFactory {
         person.linkedArrows = [];
         person.throwingArm = parts.leftLowerArm;
         person.attackTelegraphSprite = spriteBundle.spritesByPart.leftLowerArm;
+        person.activeStatusEffects = {};
+        person.rewardMultiplier = 1;
+        person.aimSpreadMultiplier = 1;
+        person.throwForceMultiplier = 1;
         if (showHealthDisplay) {
             person.attackInterval = attackInterval;
+            person.baseAttackInterval = attackInterval;
             person.timer = 0;
             person.currentDelay = 0;
             person.delayAttack = delayAttack;
             person.triggered = false;
             person.healthDisplay = this.scene.add.text(0, 0, `${person.health}`, { font: "40px Arial", fill: "#ffFFFF" }).setOrigin(0.5, 0.5);
+            person.statusDisplay = this.scene.add.text(0, 0, "", { font: "22px Arial", fill: "#1b1b1b" }).setOrigin(0.5, 0.5);
         }
         return person;
     }
@@ -511,6 +811,7 @@ const HUD_STYLES = {
     currency: { font: "32px Arial", fill: "#1b1b1b" },
     weapon: { font: "24px Arial", fill: "#1b1b1b" }
 };
+const ENEMY_STATUS_ORDER = ["bounty", "burn", "scatter", "jam"];
 class LevelScene extends LooseScene {
     init(data = {}) {
         this.levelData = data;
@@ -575,7 +876,7 @@ class LevelScene extends LooseScene {
             this.instaCharge = !this.instaCharge;
         });
         up.on("up", () => {
-            this.scene.restart({ scale: 1 });
+            this.scene.restart(this.levelData);
         });
         escape.on("down", () => {
             this.openPauseMenu();
@@ -759,9 +1060,15 @@ class LevelScene extends LooseScene {
     updateHumanoidAI(delta) {
         this.humanoids.forEach((humanoid) => {
             if (humanoid.health > 0) {
+                this.updateHumanoidStatusEffects(humanoid, delta);
+                if (humanoid.health <= 0) {
+                    return;
+                }
                 humanoid.healthDisplay.x = humanoid.parts.head.position.x;
                 humanoid.healthDisplay.y = humanoid.parts.head.position.y;
                 humanoid.healthDisplay.setText(`${humanoid.health}`);
+                humanoid.statusDisplay.x = humanoid.parts.head.position.x;
+                humanoid.statusDisplay.y = humanoid.parts.head.position.y - 34;
                 humanoid.timer += delta;
                 if (humanoid.timer >= humanoid.attackInterval) {
                     humanoid.timer -= humanoid.attackInterval;
@@ -778,6 +1085,152 @@ class LevelScene extends LooseScene {
                 }
             }
         });
+    }
+    updateHumanoidStatusEffects(humanoid, delta) {
+        const activeEffects = humanoid.activeStatusEffects;
+        if (!activeEffects) {
+            return;
+        }
+        let pendingBurnDamage = 0;
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            const activeStatus = activeEffects[statusKind];
+            if (!activeStatus) {
+                return;
+            }
+            if (activeStatus.remainingMs != null) {
+                activeStatus.remainingMs -= delta;
+                if (activeStatus.remainingMs <= 0) {
+                    delete activeEffects[statusKind];
+                    return;
+                }
+            }
+            if (activeStatus.effect.kind === "burn") {
+                activeStatus.tickTimerMs += delta;
+                while (activeStatus.tickTimerMs >= activeStatus.effect.tickIntervalMs) {
+                    activeStatus.tickTimerMs -= activeStatus.effect.tickIntervalMs;
+                    pendingBurnDamage += activeStatus.effect.damagePerTick * activeStatus.stacks;
+                }
+            }
+        });
+        if (pendingBurnDamage > 0) {
+            this.applyStatusDamage(humanoid, pendingBurnDamage);
+        }
+        this.refreshHumanoidStatusModifiers(humanoid);
+        this.refreshHumanoidStatusDisplay(humanoid);
+    }
+    applyStatusDamage(person, damage) {
+        if (person.health <= 0) {
+            return;
+        }
+        person.linkedSprites.forEach((sprite) => {
+            sprite.setTint(0xff7b00);
+        });
+        person.health -= damage;
+        this.time.delayedCall(120, () => {
+            person.linkedSprites.forEach((sprite) => {
+                sprite.clearTint();
+            });
+        });
+        if (person.health <= 0) {
+            this.handlePersonDeath(person);
+        }
+    }
+    applyProjectileStatusEffects(person, statusEffects) {
+        if (!statusEffects || statusEffects.length === 0 || person === this.player || !person.activeStatusEffects) {
+            return;
+        }
+        statusEffects.forEach((statusEffect) => {
+            this.applyEnemyStatusEffect(person, statusEffect);
+        });
+        this.refreshHumanoidStatusModifiers(person);
+        this.refreshHumanoidStatusDisplay(person);
+    }
+    applyEnemyStatusEffect(person, statusEffect) {
+        var _a;
+        const activeEffects = person.activeStatusEffects;
+        const existingStatus = activeEffects[statusEffect.kind];
+        const maxStacks = Math.max(1, (_a = statusEffect.maxStacks) !== null && _a !== void 0 ? _a : 1);
+        const durationMs = statusEffect.durationMs != null && statusEffect.durationMs > 0
+            ? statusEffect.durationMs
+            : undefined;
+        if (!existingStatus) {
+            activeEffects[statusEffect.kind] = {
+                effect: Object.assign({}, statusEffect),
+                stacks: 1,
+                remainingMs: durationMs,
+                tickTimerMs: 0
+            };
+            return;
+        }
+        existingStatus.effect = Object.assign({}, statusEffect);
+        existingStatus.stacks = Math.min(existingStatus.stacks + 1, maxStacks);
+        if (durationMs != null) {
+            existingStatus.remainingMs = durationMs;
+        }
+    }
+    refreshHumanoidStatusModifiers(humanoid) {
+        let rewardMultiplier = 1;
+        let aimSpreadMultiplier = 1;
+        let attackIntervalMultiplier = 1;
+        let throwForceMultiplier = 1;
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            var _a;
+            const activeStatus = (_a = humanoid.activeStatusEffects) === null || _a === void 0 ? void 0 : _a[statusKind];
+            if (!activeStatus) {
+                return;
+            }
+            switch (activeStatus.effect.kind) {
+                case "bounty":
+                    rewardMultiplier += activeStatus.effect.rewardMultiplierPerStack * activeStatus.stacks;
+                    break;
+                case "scatter":
+                    aimSpreadMultiplier += activeStatus.effect.aimSpreadMultiplierPerStack * activeStatus.stacks;
+                    throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                    break;
+                case "jam":
+                    attackIntervalMultiplier += activeStatus.effect.attackIntervalMultiplierPerStack * activeStatus.stacks;
+                    throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                    break;
+                default:
+                    break;
+            }
+        });
+        humanoid.rewardMultiplier = rewardMultiplier;
+        humanoid.aimSpreadMultiplier = aimSpreadMultiplier;
+        humanoid.throwForceMultiplier = Math.max(0.2, throwForceMultiplier);
+        if (humanoid.baseAttackInterval != null) {
+            humanoid.attackInterval = Math.max(250, humanoid.baseAttackInterval * attackIntervalMultiplier);
+        }
+    }
+    refreshHumanoidStatusDisplay(humanoid) {
+        if (!humanoid.statusDisplay) {
+            return;
+        }
+        const statusSegments = [];
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            var _a;
+            const activeStatus = (_a = humanoid.activeStatusEffects) === null || _a === void 0 ? void 0 : _a[statusKind];
+            if (!activeStatus) {
+                return;
+            }
+            switch (activeStatus.effect.kind) {
+                case "bounty":
+                    statusSegments.push(`Cash x${(1 + activeStatus.effect.rewardMultiplierPerStack * activeStatus.stacks).toFixed(2)}`);
+                    break;
+                case "burn":
+                    statusSegments.push(`Burn ${activeStatus.stacks}`);
+                    break;
+                case "scatter":
+                    statusSegments.push(`Scatter ${activeStatus.stacks}`);
+                    break;
+                case "jam":
+                    statusSegments.push(`Slow ${activeStatus.stacks}`);
+                    break;
+                default:
+                    break;
+            }
+        });
+        humanoid.statusDisplay.setText(statusSegments.join("  |  "));
     }
     rollAttackPower(humanoid) {
         const attackConfig = humanoid.archetype.attack;
@@ -904,13 +1357,21 @@ class LevelScene extends LooseScene {
         return configs.map((config) => this.spawnEnemy(config));
     }
     humanoidAttack(humanoid, scale, power, player) {
+        var _a, _b;
         const spawnpoint = humanoid.throwingArm;
         const attackConfig = humanoid.archetype.attack;
-        spawnpoint.force = { x: attackConfig.throwForceX * scale, y: attackConfig.throwForceY * scale };
+        const aimSpreadMultiplier = (_a = humanoid.aimSpreadMultiplier) !== null && _a !== void 0 ? _a : 1;
+        const throwForceMultiplier = (_b = humanoid.throwForceMultiplier) !== null && _b !== void 0 ? _b : 1;
+        const aimSpreadX = attackConfig.aimSpreadX * aimSpreadMultiplier;
+        const aimSpreadY = attackConfig.aimSpreadY * aimSpreadMultiplier;
+        spawnpoint.force = {
+            x: attackConfig.throwForceX * scale * throwForceMultiplier,
+            y: attackConfig.throwForceY * scale * throwForceMultiplier
+        };
         const resolvedScale = Math.abs(scale);
         const targetBody = player.bodies[Math.floor(Math.random() * player.bodies.length)];
         const targetPosition = targetBody.position;
-        const angle = Phaser.Math.Angle.Between(spawnpoint.position.x, spawnpoint.position.y, targetPosition.x + (Math.random() * attackConfig.aimSpreadX * 2 - attackConfig.aimSpreadX), targetPosition.y + (Math.random() * attackConfig.aimSpreadY * 2 - attackConfig.aimSpreadY));
+        const angle = Phaser.Math.Angle.Between(spawnpoint.position.x, spawnpoint.position.y, targetPosition.x + (Math.random() * aimSpreadX * 2 - aimSpreadX), targetPosition.y + (Math.random() * aimSpreadY * 2 - aimSpreadY));
         const speed = power * resolvedScale;
         const velocityX = Math.cos(angle) * speed;
         const velocityY = Math.sin(angle) * speed;
@@ -1048,6 +1509,9 @@ class LevelScene extends LooseScene {
                     sprite.clearTint();
                 });
             });
+            if (arrowList.fromplayer) {
+                this.applyProjectileStatusEffects(person, arrow.projectileConfig.statusEffects);
+            }
             if (person.health <= 0) {
                 this.handlePersonDeath(person);
             }
@@ -1072,14 +1536,15 @@ class LevelScene extends LooseScene {
         arrow.alreadyHit = true;
     }
     handlePersonDeath(person) {
-        var _a, _b;
+        var _a, _b, _c;
         if (person.dead) {
             return;
         }
         person.dead = true;
         if (person !== this.player) {
             this.kills += 1;
-            const reward = (_b = (_a = person.archetype) === null || _a === void 0 ? void 0 : _a.currencyReward) !== null && _b !== void 0 ? _b : 0;
+            const baseReward = (_b = (_a = person.archetype) === null || _a === void 0 ? void 0 : _a.currencyReward) !== null && _b !== void 0 ? _b : 0;
+            const reward = Math.max(0, Math.round(baseReward * ((_c = person.rewardMultiplier) !== null && _c !== void 0 ? _c : 1)));
             if (reward > 0) {
                 this.playerProfile = updatePlayerProfile((profile) => {
                     profile.currency += reward;
@@ -1092,6 +1557,10 @@ class LevelScene extends LooseScene {
         if (person.healthDisplay) {
             person.healthDisplay.setText("");
         }
+        if (person.statusDisplay) {
+            person.statusDisplay.setText("");
+        }
+        person.activeStatusEffects = {};
         person.bodies.forEach((bodyPart) => {
             if (bodyPart.label === "chest") {
                 this.matter.body.setStatic(bodyPart, false);
@@ -1133,6 +1602,29 @@ class LevelScene extends LooseScene {
         });
     }
 }
+class ManualLevelScene extends LevelScene {
+    constructor(manualLevelKey) {
+        super(manualLevelKey);
+        this.manualLevelKey = manualLevelKey;
+    }
+    create() {
+        var _a, _b;
+        super.create();
+        const definition = getManualLevelDefinition(this.manualLevelKey);
+        this.currentLevel = definition.sceneKey;
+        this.nextLevel = definition.nextLevel;
+        if (definition.instructions) {
+            const instructions = this.add.text(definition.instructions.x, definition.instructions.y, definition.instructions.text, {
+                font: (_a = definition.instructions.font) !== null && _a !== void 0 ? _a : "bold 40px Arial",
+                fill: (_b = definition.instructions.fill) !== null && _b !== void 0 ? _b : "#ffffff"
+            });
+            this.events.once("levelEnd", () => {
+                instructions.destroy();
+            });
+        }
+        this.humanoids.push(...this.spawnEnemies(definition.createEnemyConfigs(this.levelScale)));
+    }
+}
 class Menu extends LooseScene {
     init(data) {
     }
@@ -1164,128 +1656,6 @@ class Menu extends LooseScene {
                 });
             }
         });
-    }
-}
-class LevelOne extends LevelScene {
-    constructor() {
-        super("LevelOne");
-    }
-    preload() {
-        super.preload();
-    }
-    create() {
-        super.create();
-        this.currentLevel = "LevelOne";
-        this.nextLevel = "LevelTwo";
-        const enemyConfigs = [
-            createEnemySpawnConfig({
-                x: 1300,
-                y: 600,
-                scale: this.levelScale,
-                health: 3,
-                flip: true,
-                attackInterval: 3000,
-                attackDelay: 2
-            })
-        ];
-        const instructions = this.add.text(200, 150, "Hold Click to Charge the Bow\nLet Go to Shoot the Arrow in the direction of your Mouse\n\nEach Arrow does 1 DMG\nHeadshotting Opponents does 3 DMG\nOpponents can shoot at you\nTheir Arm will glow orange when they start throwing arrows\nYou have 10 Health", { font: "bold 40px Arial", fill: "#ffffff" });
-        this.humanoids.push(...this.spawnEnemies(enemyConfigs));
-        this.events.on("levelEnd", () => {
-            instructions.setText("");
-        });
-    }
-}
-class LevelTwo extends LevelScene {
-    constructor() {
-        super("LevelTwo");
-    }
-    preload() {
-        super.preload();
-    }
-    create() {
-        super.create();
-        this.currentLevel = "LevelTwo";
-        this.nextLevel = "LevelThree";
-        const enemyConfigs = [
-            createEnemySpawnConfig({
-                x: 1300,
-                y: 700,
-                scale: this.levelScale + 0.2,
-                health: 5,
-                flip: true,
-                attackInterval: 2000,
-                attackDelay: 2
-            }),
-            createEnemySpawnConfig({
-                x: 1000,
-                y: 500,
-                scale: this.levelScale - 0.3,
-                health: 2,
-                flip: true,
-                attackInterval: 3000,
-                attackDelay: 3
-            }),
-            createEnemySpawnConfig({
-                x: 1600,
-                y: 300,
-                scale: this.levelScale - 0.5,
-                health: 1,
-                flip: true,
-                attackInterval: 4000,
-                attackDelay: 1
-            })
-        ];
-        const instructions = this.add.text(200, 300, "There is no lore to this game,\nidk why these guys are floating\n(other than making it so \nyou have to aim in the air)", { font: "bold 40px Arial", fill: "#ffffff" });
-        this.events.on("levelEnd", () => {
-            instructions.setText("");
-        });
-        this.humanoids.push(...this.spawnEnemies(enemyConfigs));
-    }
-}
-class LevelThree extends LevelScene {
-    constructor() {
-        super("LevelThree");
-    }
-    preload() {
-        super.preload();
-    }
-    create() {
-        super.create();
-        this.currentLevel = "LevelThree";
-        this.nextLevel = "MainMenu";
-        const bossConfigs = [
-            createEnemySpawnConfig({
-                x: 1250,
-                y: 400,
-                scale: this.levelScale + 0.5,
-                health: 9,
-                flip: true,
-                attackInterval: 5000,
-                attackDelay: 5
-            })
-        ];
-        const instructions = this.add.text(200, 200, "Extra Stuff:\nPress the Down Arrow to toggle bow stream cheat\nPress the Up Arrow to reset the level\nPress the Right Arrow to have your shots instantly charge\nThere is no Konami Code unfortunately", { font: "bold 25px Arial", fill: "#ffffff" });
-        this.events.on("levelEnd", () => {
-            instructions.setText("");
-        });
-        this.humanoids.push(...this.spawnEnemies(bossConfigs));
-        const weirdAmalgamX = 1700;
-        const weirdAmalgamY = 600;
-        const weirdAmalgamScale = this.levelScale - 0.6;
-        const humanoidCount = 10;
-        const amalgamConfigs = [];
-        for (let count = 0; count < humanoidCount; count++) {
-            amalgamConfigs.push(createEnemySpawnConfig({
-                x: weirdAmalgamX - count,
-                y: weirdAmalgamY,
-                scale: weirdAmalgamScale,
-                health: 1,
-                flip: true,
-                attackInterval: Math.random() * 500 + 750,
-                attackDelay: Math.random() * 2 + 10
-            }));
-        }
-        this.humanoids.push(...this.spawnEnemies(amalgamConfigs));
     }
 }
 class TimedLevel extends LevelScene {
@@ -1516,10 +1886,10 @@ class SummaryScene extends Menu {
                 });
                 nextLevelBox.on("pointerdown", () => {
                     if (this.health <= 0 || this.currentLevel === "TimedLevel") {
-                        this.menuLeave(summaryBox, this.currentLevel, this.currentLevel, { scale: 1, canCharge: false });
+                        this.menuLeave(summaryBox, this.currentLevel, this.currentLevel);
                     }
                     else {
-                        this.menuLeave(summaryBox, this.currentLevel, this.nextLevel, { scale: 1, canCharge: false });
+                        this.menuLeave(summaryBox, this.currentLevel, this.nextLevel);
                     }
                 });
             }
@@ -1540,6 +1910,7 @@ class MainMenu extends Menu {
     create() {
         const playerProfile = loadPlayerProfile();
         const selectedWeapon = getWeaponDefinition(playerProfile.selectedWeaponId);
+        const manualLevels = getManualLevelDefinitions();
         const fullscreenButton = createTextButton(this, {
             x: 1785,
             y: 60,
@@ -1564,67 +1935,62 @@ class MainMenu extends Menu {
             fill: "#1b1b1b"
         }).setOrigin(0.5);
         wholeContainer.add([title, bankText, weaponText]);
-        const buttonConfigs = [
+        const manualColumns = Math.max(1, Math.min(3, manualLevels.length));
+        const manualRows = Math.ceil(manualLevels.length / manualColumns);
+        const manualSpacingX = 320;
+        const manualSpacingY = 195;
+        const manualStartX = -((manualColumns - 1) * manualSpacingX) / 2;
+        const manualStartY = manualRows > 1 ? -80 : 0;
+        manualLevels.forEach((level, index) => {
+            const column = index % manualColumns;
+            const row = Math.floor(index / manualColumns);
+            const button = createTextButton(this, {
+                x: manualStartX + column * manualSpacingX,
+                y: manualStartY + row * manualSpacingY,
+                width: 280,
+                height: 160,
+                label: level.label,
+                backgroundColor: level.menuColor,
+                font: "bold 42px Arial",
+                parent: wholeContainer
+            });
+            button.background.on("pointerup", () => {
+                this.menuLeave(wholeContainer, "MainMenu", level.sceneKey);
+            });
+        });
+        const utilityButtonConfigs = [
             {
-                x: -525,
-                y: -40,
-                label: "Level 1",
-                color: 0x3fafaa,
-                scene: "LevelOne",
-                config: { scale: 1, canCharge: false }
-            },
-            {
-                x: 0,
-                y: -40,
-                label: "Level 2",
-                color: 0xf0f6af,
-                scene: "LevelTwo",
-                config: { scale: 1, canCharge: false }
-            },
-            {
-                x: 525,
-                y: -40,
-                label: "Level 3",
-                color: 0x8ff00f,
-                scene: "LevelThree",
-                config: { scale: 1, canCharge: false }
-            },
-            {
-                x: -525,
-                y: 240,
+                x: -420,
                 label: "Timed\nMode",
                 color: 0xffafaa,
-                scene: "TimedLevel",
-                config: { scale: 1, canCharge: false }
+                scene: "TimedLevel"
             },
             {
                 x: 0,
-                y: 240,
                 label: "Credits",
                 color: 0xffffaa,
                 scene: "Credits"
             },
             {
-                x: 525,
-                y: 240,
+                x: 420,
                 label: "Shop",
                 color: 0xcdb4db,
                 scene: "ShopMenu"
             }
         ];
-        buttonConfigs.forEach((buttonConfig) => {
+        utilityButtonConfigs.forEach((buttonConfig) => {
             const button = createTextButton(this, {
                 x: buttonConfig.x,
-                y: buttonConfig.y,
+                y: 300,
                 width: 300,
-                height: 210,
+                height: 170,
                 label: buttonConfig.label,
                 backgroundColor: buttonConfig.color,
-                font: "bold 46px Arial",
+                font: "bold 44px Arial",
                 parent: wholeContainer
             });
             button.background.on("pointerup", () => {
-                this.menuLeave(wholeContainer, "MainMenu", buttonConfig.scene, buttonConfig.config);
+                this.menuLeave(wholeContainer, "MainMenu", buttonConfig.scene);
             });
         });
         this.tweens.add({
@@ -1875,6 +2241,7 @@ class ShopMenu extends Menu {
             `Head Damage: ${focusedWeapon.projectile.damage.head}`,
             `Shot Speed: x${focusedWeapon.powerMultiplier.toFixed(2)}`,
             `Pierce: ${(_a = focusedWeapon.projectile.pierceCount) !== null && _a !== void 0 ? _a : 0}`,
+            ...getProjectileStatusSummary(focusedWeapon.projectile),
             focusedWeapon.cost > 0 ? `Price: $${focusedWeapon.cost}` : "Included from the start"
         ].join("\n"));
         this.detailState.setText(focusedSelected
@@ -1910,6 +2277,7 @@ class ShopMenu extends Menu {
         });
     }
 }
+const manualLevelScenes = getManualLevelDefinitions().map((definition) => new ManualLevelScene(definition.sceneKey));
 const game = new Phaser.Game({
     type: Phaser.AUTO,
     backgroundColor: "#2beaff",
@@ -1928,7 +2296,7 @@ const game = new Phaser.Game({
         width: 1920,
         height: 1080
     },
-    scene: [MainMenu, ShopMenu, PauseScene, SummaryScene, LevelOne, LevelTwo, LevelThree, TimedLevel, Credits],
+    scene: [MainMenu, ShopMenu, PauseScene, SummaryScene, ...manualLevelScenes, TimedLevel, Credits],
     title: "Physics Game"
 });
 //# sourceMappingURL=game.js.map

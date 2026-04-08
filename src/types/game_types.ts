@@ -1,11 +1,15 @@
+type ManualLevelKey =
+    | "LevelOne"
+    | "LevelTwo"
+    | "LevelThree"
+    | "LevelFour";
+
 type SceneKey =
     | "MainMenu"
     | "ShopMenu"
     | "PauseScene"
     | "SummaryScene"
-    | "LevelOne"
-    | "LevelTwo"
-    | "LevelThree"
+    | ManualLevelKey
     | "TimedLevel"
     | "Credits";
 
@@ -19,6 +23,7 @@ type GameObject = any;
 type ProjectileOwner = "player" | "enemy";
 type ShopItemCategory = "bow" | "arrow" | "utility";
 type EnemyArchetypeId = "standard";
+type EnemyStatusEffectKind = "bounty" | "burn" | "scatter" | "jam";
 type RagdollPartMap = Record<BodyPartName, MatterBody>;
 type RagdollSpriteMap = Partial<Record<BodyPartName, LinkedSprite>>;
 
@@ -36,7 +41,6 @@ type BodyPartName =
 
 interface LevelInitData {
     scale?: number;
-    canCharge?: boolean;
 }
 
 interface SummarySceneData {
@@ -98,11 +102,17 @@ interface RagdollPerson {
     throwingArm: MatterBody;
     attackTelegraphSprite?: LinkedSprite;
     healthDisplay?: GameText;
+    statusDisplay?: GameText;
     attackInterval?: number;
+    baseAttackInterval?: number;
     timer?: number;
     currentDelay?: number;
     delayAttack?: number;
     triggered?: boolean;
+    activeStatusEffects?: Partial<Record<EnemyStatusEffectKind, EnemyStatusState>>;
+    rewardMultiplier?: number;
+    aimSpreadMultiplier?: number;
+    throwForceMultiplier?: number;
     archetype?: EnemyArchetype;
     loadout?: PlayerLoadout;
     spawnConfig?: EnemySpawnConfig;
@@ -111,6 +121,48 @@ interface RagdollPerson {
 interface DamageProfile {
     body: number;
     head: number;
+}
+
+interface BaseEnemyStatusEffectConfig {
+    kind: EnemyStatusEffectKind;
+    durationMs?: number;
+    maxStacks?: number;
+}
+
+interface BountyStatusEffectConfig extends BaseEnemyStatusEffectConfig {
+    kind: "bounty";
+    rewardMultiplierPerStack: number;
+}
+
+interface BurnStatusEffectConfig extends BaseEnemyStatusEffectConfig {
+    kind: "burn";
+    damagePerTick: number;
+    tickIntervalMs: number;
+}
+
+interface ScatterStatusEffectConfig extends BaseEnemyStatusEffectConfig {
+    kind: "scatter";
+    aimSpreadMultiplierPerStack: number;
+    throwForceReductionPerStack: number;
+}
+
+interface JamStatusEffectConfig extends BaseEnemyStatusEffectConfig {
+    kind: "jam";
+    attackIntervalMultiplierPerStack: number;
+    throwForceReductionPerStack: number;
+}
+
+type EnemyStatusEffectConfig =
+    | BountyStatusEffectConfig
+    | BurnStatusEffectConfig
+    | ScatterStatusEffectConfig
+    | JamStatusEffectConfig;
+
+interface EnemyStatusState {
+    effect: EnemyStatusEffectConfig;
+    stacks: number;
+    remainingMs?: number;
+    tickTimerMs: number;
 }
 
 interface ProjectileConfig {
@@ -123,6 +175,7 @@ interface ProjectileConfig {
     damage: DamageProfile;
     tint?: number;
     pierceCount?: number;
+    statusEffects?: EnemyStatusEffectConfig[];
 }
 
 interface EnemyAttackTuning {
@@ -155,6 +208,23 @@ interface EnemySpawnConfig {
     attackDelay: number;
     staticBody?: boolean;
     archetype: EnemyArchetype;
+}
+
+interface ManualLevelInstructionConfig {
+    x: number;
+    y: number;
+    text: string;
+    font?: string;
+    fill?: string;
+}
+
+interface ManualLevelDefinition {
+    sceneKey: ManualLevelKey;
+    label: string;
+    menuColor: number;
+    nextLevel: SceneKey;
+    instructions?: ManualLevelInstructionConfig;
+    createEnemyConfigs: (levelScale: number) => EnemySpawnConfig[];
 }
 
 interface PlayerLoadout {

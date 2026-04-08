@@ -114,14 +114,20 @@ class HumanoidFactory {
         person.linkedArrows = [];
         person.throwingArm = parts.leftLowerArm;
         person.attackTelegraphSprite = spriteBundle.spritesByPart.leftLowerArm;
+        person.activeStatusEffects = {};
+        person.rewardMultiplier = 1;
+        person.aimSpreadMultiplier = 1;
+        person.throwForceMultiplier = 1;
 
         if (showHealthDisplay) {
             person.attackInterval = attackInterval;
+            person.baseAttackInterval = attackInterval;
             person.timer = 0;
             person.currentDelay = 0;
             person.delayAttack = delayAttack;
             person.triggered = false;
             person.healthDisplay = this.scene.add.text(0, 0, `${person.health}`, { font: "40px Arial", fill: "#ffFFFF" }).setOrigin(0.5, 0.5);
+            person.statusDisplay = this.scene.add.text(0, 0, "", { font: "22px Arial", fill: "#1b1b1b" }).setOrigin(0.5, 0.5);
         }
 
         return person;

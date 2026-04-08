@@ -96,10 +96,10 @@ class SummaryScene extends Menu {
 
                 nextLevelBox.on("pointerdown", () => {
                     if (this.health <= 0 || this.currentLevel === "TimedLevel") {
-                        this.menuLeave(summaryBox, this.currentLevel, this.currentLevel, { scale: 1, canCharge: false });
+                        this.menuLeave(summaryBox, this.currentLevel, this.currentLevel);
                     }
                     else {
-                        this.menuLeave(summaryBox, this.currentLevel, this.nextLevel, { scale: 1, canCharge: false });
+                        this.menuLeave(summaryBox, this.currentLevel, this.nextLevel);
                     }
                 });
             }

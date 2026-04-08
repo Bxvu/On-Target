@@ -8,6 +8,7 @@ function createWeaponProjectile(config: {
     damage: DamageProfile;
     tint: number;
     pierceCount?: number;
+    statusEffects?: EnemyStatusEffectConfig[];
 }): ProjectileConfig {
     return {
         id: config.id,
@@ -18,7 +19,8 @@ function createWeaponProjectile(config: {
         maxActive: config.maxActive,
         damage: config.damage,
         tint: config.tint,
-        pierceCount: config.pierceCount ?? 0
+        pierceCount: config.pierceCount ?? 0,
+        statusEffects: config.statusEffects?.map((effect) => ({ ...effect }))
     };
 }
 
@@ -31,15 +33,16 @@ function createWeaponDefinition(config: {
     powerMultiplier: number;
     accentColor: number;
     placeholderLabel: string;
-    projectile: {
-        id: string;
-        scale: number;
-        lifetimeMs: number;
-        maxActive: number;
-        damage: DamageProfile;
-        tint: number;
-        pierceCount?: number;
-    };
+        projectile: {
+            id: string;
+            scale: number;
+            lifetimeMs: number;
+            maxActive: number;
+            damage: DamageProfile;
+            tint: number;
+            pierceCount?: number;
+            statusEffects?: EnemyStatusEffectConfig[];
+        };
 }): WeaponDefinition {
     return {
         id: config.id,
@@ -53,6 +56,33 @@ function createWeaponDefinition(config: {
         accentColor: config.accentColor,
         placeholderLabel: config.placeholderLabel
     };
+}
+
+function formatModifierPercent(value: number): string {
+    return `${Math.round(value * 100)}%`;
+}
+
+function describeEnemyStatusEffect(effect: EnemyStatusEffectConfig): string {
+    switch (effect.kind) {
+    case "bounty":
+        return `Status: +${formatModifierPercent(effect.rewardMultiplierPerStack)} money per stack`;
+    case "burn":
+        return `Status: Burn ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`;
+    case "scatter":
+        return `Status: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} aim spread, -${formatModifierPercent(effect.throwForceReductionPerStack)} throw force per stack`;
+    case "jam":
+        return `Status: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay, -${formatModifierPercent(effect.throwForceReductionPerStack)} throw force per stack`;
+    default:
+        return "Status: None";
+    }
+}
+
+function getProjectileStatusSummary(projectile: ProjectileConfig): string[] {
+    if (!projectile.statusEffects || projectile.statusEffects.length === 0) {
+        return ["Status: None"];
+    }
+
+    return projectile.statusEffects.map((effect) => describeEnemyStatusEffect(effect));
 }
 
 const ENEMY_ARROW_CONFIG: ProjectileConfig = {
@@ -166,10 +196,36 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
             lifetimeMs: 7000,
             maxActive: 18,
             damage: {
-                body: -2,
+                body: -10,
                 head: 20
             },
-            tint: 0x94d2bd
+            tint: 0x94d2bd,
+            statusEffects: [{
+                kind: "bounty",
+                rewardMultiplierPerStack: 1,
+                maxStacks: 1000
+            },
+            {
+                kind: "jam",
+                attackIntervalMultiplierPerStack: 0.3,
+                throwForceReductionPerStack: 0.5,
+                durationMs: 10000,
+                maxStacks: 1000
+            },
+            {
+                kind: "burn",
+                damagePerTick: 1,
+                tickIntervalMs: 100,
+                durationMs: 500,
+                maxStacks: 1
+            },
+            {
+                kind: "scatter",
+                aimSpreadMultiplierPerStack: 0.35,
+                throwForceReductionPerStack: 0.15,
+                durationMs: 10000,
+                maxStacks: 1000
+            }]
         }
     }),
     createWeaponDefinition({
@@ -192,6 +248,116 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
             },
             tint: 0x7b2cbf,
             pierceCount: 2
+        }
+    }),
+    createWeaponDefinition({
+        id: "bounty-bow",
+        name: "Bounty Bow",
+        description: "Low damage, but every hit marks enemies for a fatter payout when they go down.",
+        cost: 70,
+        bowTint: 0xf9c74f,
+        powerMultiplier: 1,
+        accentColor: 0xf9c74f,
+        placeholderLabel: "Cash",
+        projectile: {
+            id: "bounty-arrow",
+            scale: 0.18,
+            lifetimeMs: 8000,
+            maxActive: 24,
+            damage: {
+                body: 1,
+                head: 2
+            },
+            tint: 0xf9c74f,
+            statusEffects: [{
+                kind: "bounty",
+                rewardMultiplierPerStack: 0.25,
+                maxStacks: 4
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "ember-bow",
+        name: "Ember Bow",
+        description: "Ignites targets with stacking burn damage that keeps chewing through tougher enemies.",
+        cost: 110,
+        bowTint: 0xf3722c,
+        powerMultiplier: 1.05,
+        accentColor: 0xf3722c,
+        placeholderLabel: "Burn",
+        projectile: {
+            id: "ember-arrow",
+            scale: 0.19,
+            lifetimeMs: 7600,
+            maxActive: 22,
+            damage: {
+                body: 1,
+                head: 3
+            },
+            tint: 0xf3722c,
+            statusEffects: [{
+                kind: "burn",
+                damagePerTick: 1,
+                tickIntervalMs: 700,
+                durationMs: 4200,
+                maxStacks: 4
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "scrambler-bow",
+        name: "Scrambler Bow",
+        description: "Debuff shots throw enemy aim off, making return fire drift wider and wider.",
+        cost: 95,
+        bowTint: 0x43aa8b,
+        powerMultiplier: 1,
+        accentColor: 0x43aa8b,
+        placeholderLabel: "Scatter",
+        projectile: {
+            id: "scrambler-arrow",
+            scale: 0.18,
+            lifetimeMs: 7800,
+            maxActive: 24,
+            damage: {
+                body: 1,
+                head: 3
+            },
+            tint: 0x43aa8b,
+            statusEffects: [{
+                kind: "scatter",
+                aimSpreadMultiplierPerStack: 0.35,
+                throwForceReductionPerStack: 0.15,
+                durationMs: 5000,
+                maxStacks: 3
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "ballast-bow",
+        name: "Ballast Bow",
+        description: "Heavy shots gum up the enemy rhythm and slow how often they can fire back.",
+        cost: 105,
+        bowTint: 0x577590,
+        powerMultiplier: 0.95,
+        accentColor: 0x577590,
+        placeholderLabel: "Slow",
+        projectile: {
+            id: "ballast-arrow",
+            scale: 0.2,
+            lifetimeMs: 7800,
+            maxActive: 20,
+            damage: {
+                body: 2,
+                head: 3
+            },
+            tint: 0x577590,
+            statusEffects: [{
+                kind: "jam",
+                attackIntervalMultiplierPerStack: 0.3,
+                throwForceReductionPerStack: 0.5,
+                durationMs: 5000,
+                maxStacks: 5
+            }]
         }
     })
 ];
@@ -342,6 +508,144 @@ function createEnemySpawnConfig(config: Omit<EnemySpawnConfig, "archetype"> & { 
         archetype: STANDARD_ENEMY_ARCHETYPE,
         ...config
     };
+}
+
+const MANUAL_LEVEL_DEFINITIONS: ManualLevelDefinition[] = [
+    {
+        sceneKey: "LevelOne",
+        label: "Level 1",
+        menuColor: 0x3fafaa,
+        nextLevel: "LevelTwo",
+        instructions: {
+            x: 200,
+            y: 150,
+            text: "Hold Click to Charge the Bow\nLet Go to Shoot the Arrow in the direction of your Mouse\n\nEach Arrow does 1 DMG\nHeadshotting Opponents does 3 DMG\nOpponents can shoot at you\nTheir Arm will glow orange when they start throwing arrows\nYou have 10 Health",
+            font: "bold 40px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1300,
+                y: 600,
+                scale: levelScale,
+                health: 3,
+                flip: true,
+                attackInterval: 3000,
+                attackDelay: 2
+            })
+        ]
+    },
+    {
+        sceneKey: "LevelTwo",
+        label: "Level 2",
+        menuColor: 0xf0f6af,
+        nextLevel: "LevelThree",
+        instructions: {
+            x: 200,
+            y: 300,
+            text: "There is no lore to this game,\nidk why these guys are floating\n(other than making it so \nyou have to aim in the air)",
+            font: "bold 40px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1300,
+                y: 700,
+                scale: levelScale + 0.2,
+                health: 5,
+                flip: true,
+                attackInterval: 2000,
+                attackDelay: 2
+            }),
+            createEnemySpawnConfig({
+                x: 1000,
+                y: 500,
+                scale: levelScale - 0.3,
+                health: 2,
+                flip: true,
+                attackInterval: 3000,
+                attackDelay: 3
+            }),
+            createEnemySpawnConfig({
+                x: 1600,
+                y: 300,
+                scale: levelScale - 0.5,
+                health: 1,
+                flip: true,
+                attackInterval: 4000,
+                attackDelay: 1
+            })
+        ]
+    },
+    {
+        sceneKey: "LevelThree",
+        label: "Level 3",
+        menuColor: 0x8ff00f,
+        nextLevel: "LevelFour",
+        instructions: {
+            x: 200,
+            y: 200,
+            text: "Extra Stuff:\nPress the Down Arrow to toggle bow stream cheat\nPress the Up Arrow to reset the level\nPress the Right Arrow to have your shots instantly charge\nThere is no Konami Code unfortunately",
+            font: "bold 25px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => {
+            const enemyConfigs: EnemySpawnConfig[] = [
+                createEnemySpawnConfig({
+                    x: 1250,
+                    y: 400,
+                    scale: levelScale + 0.5,
+                    health: 9,
+                    flip: true,
+                    attackInterval: 5000,
+                    attackDelay: 5
+                })
+            ];
+            const weirdAmalgamX = 1700;
+            const weirdAmalgamY = 600;
+            const weirdAmalgamScale = levelScale - 0.6;
+            const humanoidCount = 10;
+
+            for (let count = 0; count < humanoidCount; count++) {
+                enemyConfigs.push(createEnemySpawnConfig({
+                    x: weirdAmalgamX - count,
+                    y: weirdAmalgamY,
+                    scale: weirdAmalgamScale,
+                    health: 1,
+                    flip: true,
+                    attackInterval: Math.random() * 500 + 750,
+                    attackDelay: Math.random() * 2 + 10
+                }));
+            }
+
+            return enemyConfigs;
+        }
+    },
+    {
+        sceneKey: "LevelFour",
+        label: "Level 4",
+        menuColor: 0x6d9dc5,
+        nextLevel: "MainMenu",
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1250,
+                y: 400,
+                scale: levelScale + 0.5,
+                health: 25,
+                flip: true,
+                attackInterval: 2000,
+                attackDelay: 0
+            })
+        ]
+    }
+];
+
+function getManualLevelDefinitions(): ManualLevelDefinition[] {
+    return MANUAL_LEVEL_DEFINITIONS;
+}
+
+function getManualLevelDefinition(sceneKey: ManualLevelKey): ManualLevelDefinition {
+    return MANUAL_LEVEL_DEFINITIONS.find((definition) => definition.sceneKey === sceneKey) ?? MANUAL_LEVEL_DEFINITIONS[0];
 }
 
 function createTextButton(

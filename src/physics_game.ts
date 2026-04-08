@@ -1,3 +1,7 @@
+const manualLevelScenes = getManualLevelDefinitions().map(
+    (definition) => new ManualLevelScene(definition.sceneKey)
+);
+
 const game = new Phaser.Game({
     type: Phaser.AUTO,
     backgroundColor: "#2beaff",
@@ -16,6 +20,6 @@ const game = new Phaser.Game({
         width: 1920,
         height: 1080
     },
-    scene: [MainMenu, ShopMenu, PauseScene, SummaryScene, LevelOne, LevelTwo, LevelThree, TimedLevel, Credits],
+    scene: [MainMenu, ShopMenu, PauseScene, SummaryScene, ...manualLevelScenes, TimedLevel, Credits],
     title: "Physics Game"
 });
