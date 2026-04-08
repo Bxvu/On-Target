@@ -1,5 +1,6 @@
 type SceneKey =
     | "MainMenu"
+    | "PauseScene"
     | "SummaryScene"
     | "LevelOne"
     | "LevelTwo"
@@ -48,7 +49,18 @@ interface SummarySceneData {
     kills: number;
 }
 
+interface PauseSceneData {
+    currentLevel: SceneKey;
+    levelData?: LevelInitData;
+}
+
 interface MenuTransitionConfig extends LevelInitData {
+}
+
+interface TextButton {
+    container: GameContainer;
+    background: GameObject;
+    label: GameText;
 }
 
 interface LinkedSprite extends GameSprite {

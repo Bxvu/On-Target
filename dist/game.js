@@ -47,11 +47,55 @@ const STANDARD_ENEMY_ARCHETYPE = {
 const DEFAULT_PLAYER_LOADOUT = {
     projectile: PLAYER_ARROW_CONFIG
 };
+const DEFAULT_TEXT_BUTTON_STYLE = {
+    radius: 24,
+    backgroundColor: 0x3fafaa,
+    textColor: "#1b1b1b",
+    font: "bold 32px Arial"
+};
 // Typed scaffolding for a future shop system. Keeping the catalog data-driven
 // will make the eventual menu implementation much simpler.
 const SHOP_CATALOG = [];
 function createEnemySpawnConfig(config) {
     return Object.assign({ staticBody: false, archetype: STANDARD_ENEMY_ARCHETYPE }, config);
+}
+function createTextButton(scene, config) {
+    var _a, _b, _c, _d, _e;
+    const container = scene.add.container(config.x, config.y);
+    const background = scene.add.rexRoundRectangle(0, 0, config.width, config.height, (_a = config.radius) !== null && _a !== void 0 ? _a : DEFAULT_TEXT_BUTTON_STYLE.radius, (_b = config.backgroundColor) !== null && _b !== void 0 ? _b : DEFAULT_TEXT_BUTTON_STYLE.backgroundColor, 1);
+    background.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
+    background.setInteractive({ useHandCursor: true });
+    const label = scene.add.text(0, 0, config.label, {
+        font: (_c = config.font) !== null && _c !== void 0 ? _c : DEFAULT_TEXT_BUTTON_STYLE.font,
+        fill: (_d = config.textColor) !== null && _d !== void 0 ? _d : DEFAULT_TEXT_BUTTON_STYLE.textColor
+    }).setOrigin(0.5);
+    container.add([background, label]);
+    container.setDepth((_e = config.depth) !== null && _e !== void 0 ? _e : 1);
+    if (config.parent) {
+        config.parent.add(container);
+    }
+    return { container, background, label };
+}
+function bindFullscreenToggle(scene, button) {
+    const updateButtonLabel = () => {
+        button.label.setText(scene.scale.isFullscreen ? "Windowed" : "Fullscreen");
+    };
+    button.background.on("pointerup", () => {
+        if (scene.scale.isFullscreen) {
+            scene.scale.stopFullscreen();
+        }
+        else {
+            scene.scale.startFullscreen();
+        }
+        updateButtonLabel();
+    });
+    scene.scale.on(Phaser.Scale.Events.ENTER_FULLSCREEN, updateButtonLabel);
+    scene.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, updateButtonLabel);
+    scene.events.once("shutdown", () => {
+        scene.scale.off(Phaser.Scale.Events.ENTER_FULLSCREEN, updateButtonLabel);
+        scene.scale.off(Phaser.Scale.Events.LEAVE_FULLSCREEN, updateButtonLabel);
+    });
+    updateButtonLabel();
 }
 const HUMANOID_PARTS = [
     // These values were tuned to preserve the humanoid silhouette of the ragdolls.
@@ -284,6 +328,7 @@ class LevelScene extends LooseScene {
         const down = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
         const right = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
         const up = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
+        const escape = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
         down.on("down", () => {
             this.bowStream = !this.bowStream;
         });
@@ -292,6 +337,9 @@ class LevelScene extends LooseScene {
         });
         up.on("up", () => {
             this.scene.restart({ scale: 1 });
+        });
+        escape.on("down", () => {
+            this.openPauseMenu();
         });
     }
     registerSceneEvents() {
@@ -305,6 +353,44 @@ class LevelScene extends LooseScene {
     createHud() {
         this.chargeDisplay = this.add.text(0, 0, "Charge: 0", HUD_STYLES.charge);
         this.chargeDisplay.setOrigin(0.5, 0.5).setDepth(10);
+        this.createSystemButtons();
+    }
+    createSystemButtons() {
+        const pauseButton = createTextButton(this, {
+            x: 110,
+            y: 60,
+            width: 180,
+            height: 78,
+            label: "Pause",
+            backgroundColor: 0xffd166,
+            depth: 25
+        });
+        pauseButton.background.on("pointerup", () => {
+            this.openPauseMenu();
+        });
+        const fullscreenButton = createTextButton(this, {
+            x: 1785,
+            y: 60,
+            width: 240,
+            height: 78,
+            label: "Fullscreen",
+            backgroundColor: 0x8ecae6,
+            depth: 25
+        });
+        bindFullscreenToggle(this, fullscreenButton);
+    }
+    openPauseMenu() {
+        if (this.isLevelEnding || this.scene.isActive("PauseScene") || this.scene.isActive("SummaryScene")) {
+            return;
+        }
+        this.chargeTime = 0;
+        this.chargeDisplay.setText("Charge: 0");
+        this.scene.launch("PauseScene", {
+            currentLevel: this.currentLevel,
+            levelData: this.levelData
+        });
+        this.scene.bringToTop("PauseScene");
+        this.scene.pause();
     }
     createPlayerRig() {
         const playerItems = this.createPlayer(PLAYER_SPAWN.x, PLAYER_SPAWN.y, Math.abs(this.levelScale), 10);
@@ -982,6 +1068,85 @@ class TimedLevel extends LevelScene {
         this.humanoids.push(...this.spawnEnemies(waveConfigs));
     }
 }
+class PauseScene extends Menu {
+    constructor() {
+        super("PauseScene");
+    }
+    init(data) {
+        var _a;
+        this.currentLevel = data.currentLevel;
+        this.levelData = (_a = data.levelData) !== null && _a !== void 0 ? _a : { scale: 1 };
+    }
+    preload() {
+        super.preload();
+    }
+    create() {
+        const overlay = this.add.rectangle(1920 / 2, 1080 / 2, 1920, 1080, 0x000000, 0.55);
+        overlay.setDepth(1000);
+        overlay.setInteractive();
+        const pauseContainer = this.add.container(1920 / 2, -500);
+        pauseContainer.setDepth(1001);
+        const panel = this.add.rexRoundRectangle(0, 0, 900, 650, 30, 0x99b0af, 1);
+        panel.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
+        const title = this.add.text(0, -220, "Paused", { font: "100px Arial", fill: "#000000" }).setOrigin(0.5);
+        const subtitle = this.add.text(0, -130, "Take a breather, then jump right back in.", { font: "38px Arial", fill: "#1b1b1b" }).setOrigin(0.5);
+        pauseContainer.add([panel, title, subtitle]);
+        const resumeButton = createTextButton(this, {
+            x: 0,
+            y: 10,
+            width: 320,
+            height: 110,
+            label: "Resume",
+            backgroundColor: 0x3fafaa,
+            parent: pauseContainer
+        });
+        const restartButton = createTextButton(this, {
+            x: -185,
+            y: 170,
+            width: 290,
+            height: 110,
+            label: "Restart",
+            backgroundColor: 0xffd166,
+            parent: pauseContainer
+        });
+        const mainMenuButton = createTextButton(this, {
+            x: 185,
+            y: 170,
+            width: 290,
+            height: 110,
+            label: "Main Menu",
+            backgroundColor: 0xef476f,
+            textColor: "#ffffff",
+            parent: pauseContainer
+        });
+        const escape = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        escape.on("down", () => {
+            this.resumeLevel();
+        });
+        resumeButton.background.on("pointerup", () => {
+            this.resumeLevel();
+        });
+        restartButton.background.on("pointerup", () => {
+            this.scene.stop(this.currentLevel);
+            this.scene.start(this.currentLevel, this.levelData);
+        });
+        mainMenuButton.background.on("pointerup", () => {
+            this.scene.stop(this.currentLevel);
+            this.scene.start("MainMenu");
+        });
+        this.tweens.add({
+            targets: pauseContainer,
+            y: 1080 / 2,
+            duration: 500,
+            ease: "Cubic.out"
+        });
+        this.scene.bringToTop();
+    }
+    resumeLevel() {
+        this.scene.stop();
+        this.scene.resume(this.currentLevel);
+    }
+}
 class SummaryScene extends Menu {
     constructor() {
         super("SummaryScene");
@@ -1072,6 +1237,16 @@ class MainMenu extends Menu {
         super.preload();
     }
     create() {
+        const fullscreenButton = createTextButton(this, {
+            x: 1785,
+            y: 60,
+            width: 240,
+            height: 78,
+            label: "Fullscreen",
+            backgroundColor: 0x8ecae6,
+            depth: 20
+        });
+        bindFullscreenToggle(this, fullscreenButton);
         const wholeContainer = this.add.container(1920 / 2, -1000);
         const entireBox = this.add.rexRoundRectangle(0, 0, 1800, 1080 - 120, 30, 0x99b0af, 1);
         entireBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
@@ -1182,7 +1357,7 @@ const game = new Phaser.Game({
         width: 1920,
         height: 1080
     },
-    scene: [MainMenu, SummaryScene, LevelOne, LevelTwo, LevelThree, TimedLevel, Credits],
+    scene: [MainMenu, PauseScene, SummaryScene, LevelOne, LevelTwo, LevelThree, TimedLevel, Credits],
     title: "Physics Game"
 });
 //# sourceMappingURL=game.js.map

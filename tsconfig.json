@@ -22,6 +22,7 @@
     "src/level_2.ts",
     "src/level_3.ts",
     "src/level_timed.ts",
+    "src/pause_menu.ts",
     "src/summary_menu.ts",
     "src/main_menu.ts",
     "src/physics_game.ts"

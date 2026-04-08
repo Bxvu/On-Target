@@ -11,6 +11,18 @@ class MainMenu extends Menu {
     }
 
     create(): void {
+        const fullscreenButton = createTextButton(this, {
+            x: 1785,
+            y: 60,
+            width: 240,
+            height: 78,
+            label: "Fullscreen",
+            backgroundColor: 0x8ecae6,
+            depth: 20
+        });
+
+        bindFullscreenToggle(this, fullscreenButton);
+
         const wholeContainer = this.add.container(1920 / 2, -1000);
         const entireBox = this.add.rexRoundRectangle(0, 0, 1800, 1080 - 120, 30, 0x99b0af, 1);
         entireBox.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);

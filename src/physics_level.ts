@@ -90,6 +90,7 @@ class LevelScene extends LooseScene {
         const down = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
         const right = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
         const up = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
+        const escape = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
         down.on("down", () => {
             this.bowStream = !this.bowStream;
@@ -101,6 +102,10 @@ class LevelScene extends LooseScene {
 
         up.on("up", () => {
             this.scene.restart({ scale: 1 });
+        });
+
+        escape.on("down", () => {
+            this.openPauseMenu();
         });
     }
 
@@ -117,6 +122,50 @@ class LevelScene extends LooseScene {
     createHud(): void {
         this.chargeDisplay = this.add.text(0, 0, "Charge: 0", HUD_STYLES.charge);
         this.chargeDisplay.setOrigin(0.5, 0.5).setDepth(10);
+        this.createSystemButtons();
+    }
+
+    createSystemButtons(): void {
+        const pauseButton = createTextButton(this, {
+            x: 110,
+            y: 60,
+            width: 180,
+            height: 78,
+            label: "Pause",
+            backgroundColor: 0xffd166,
+            depth: 25
+        });
+
+        pauseButton.background.on("pointerup", () => {
+            this.openPauseMenu();
+        });
+
+        const fullscreenButton = createTextButton(this, {
+            x: 1785,
+            y: 60,
+            width: 240,
+            height: 78,
+            label: "Fullscreen",
+            backgroundColor: 0x8ecae6,
+            depth: 25
+        });
+
+        bindFullscreenToggle(this, fullscreenButton);
+    }
+
+    openPauseMenu(): void {
+        if (this.isLevelEnding || this.scene.isActive("PauseScene") || this.scene.isActive("SummaryScene")) {
+            return;
+        }
+
+        this.chargeTime = 0;
+        this.chargeDisplay.setText("Charge: 0");
+        this.scene.launch("PauseScene", {
+            currentLevel: this.currentLevel,
+            levelData: this.levelData
+        } as PauseSceneData);
+        this.scene.bringToTop("PauseScene");
+        this.scene.pause();
     }
 
     createPlayerRig(): void {
