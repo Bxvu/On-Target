@@ -267,6 +267,7 @@ class ShopMenu extends Menu {
         this.focusedWeaponId = this.playerProfile.selectedWeaponId;
 
         const wholeContainer = this.add.container(1920 / 2, -1000);
+        this.shopWholeContainer = wholeContainer;
         const panel = this.add.rexRoundRectangle(0, 0, 1820, 960, 30, 0x99b0af, 1);
         panel.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         wholeContainer.add(panel);
@@ -283,116 +284,240 @@ class ShopMenu extends Menu {
             font: "30px Arial",
             fill: "#1b1b1b"
         }).setOrigin(0.5);
-        this.shopStatusText = this.add.text(0, 385, "", {
+        this.shopStatusText = this.add.text(0, 370, "", {
             font: "34px Arial",
             fill: "#1b1b1b"
         }).setOrigin(0.5);
 
         wholeContainer.add([title, this.shopMoneyText, subtitle, this.shopStatusText]);
 
-        const gridPanel = this.add.rexRoundRectangle(-420, 30, 720, 650, 26, 0xe5efe9, 1);
+        const gridPanelBounds = {
+            x: -420,
+            y: 60,
+            width: 720,
+            height: 690
+        };
+        const gridViewport = {
+            x: -420,
+            y: 108,
+            width: 652,
+            height: 548
+        };
+        const detailPanelBounds = {
+            x: 380,
+            y: 60,
+            width: 760,
+            height: 690
+        };
+
+        this.shopGridViewport = gridViewport;
+
+        const gridPanel = this.add.rexRoundRectangle(
+            gridPanelBounds.x,
+            gridPanelBounds.y,
+            gridPanelBounds.width,
+            gridPanelBounds.height,
+            26,
+            0xe5efe9,
+            1
+        );
         gridPanel.setStrokeStyle(4, 0x7c8a87, 1);
-        const detailPanel = this.add.rexRoundRectangle(380, 30, 760, 650, 26, 0xf8fbf7, 1);
+        const detailPanel = this.add.rexRoundRectangle(
+            detailPanelBounds.x,
+            detailPanelBounds.y,
+            detailPanelBounds.width,
+            detailPanelBounds.height,
+            26,
+            0xf8fbf7,
+            1
+        );
         detailPanel.setStrokeStyle(4, 0x7c8a87, 1);
         wholeContainer.add([gridPanel, detailPanel]);
-
-        const gridTitle = this.add.text(-420, -235, "Weapons", {
-            font: "48px Arial",
-            fill: "#000000"
-        }).setOrigin(0.5);
-        const detailTitle = this.add.text(380, -235, "Details", {
-            font: "48px Arial",
-            fill: "#000000"
-        }).setOrigin(0.5);
-        wholeContainer.add([gridTitle, detailTitle]);
 
         this.shopCards = [];
         const gridColumns = WEAPON_CATALOG.length <= 4 ? 2 : 3;
         const gridRows = Math.max(1, Math.ceil(WEAPON_CATALOG.length / gridColumns));
         const tileWidth = gridColumns === 2 ? 235 : 190;
-        const tileHeight = gridRows >= 3 ? 170 : 235;
+        const tileHeight = gridColumns === 2 ? 196 : 188;
         const gridSpacingX = gridColumns === 2 ? 270 : 220;
-        const gridSpacingY = gridRows >= 3 ? 195 : 270;
-        const startX = -420 - ((gridColumns - 1) * gridSpacingX) / 2;
-        const startY = 30 - ((gridRows - 1) * gridSpacingY) / 2;
+        const gridSpacingY = gridColumns === 2 ? 225 : 210;
+        const gridPaddingY = 12;
+        const visibleGridHeight = gridViewport.height - gridPaddingY * 2;
+        const contentHeight = tileHeight + Math.max(0, gridRows - 1) * gridSpacingY;
+        const startX = -((gridColumns - 1) * gridSpacingX) / 2;
+
+        this.shopGridBaseY = gridViewport.y - gridViewport.height / 2 + gridPaddingY + tileHeight / 2;
+        this.shopGridMaxScroll = Math.max(0, contentHeight - visibleGridHeight);
+        this.shopGridScroll = 0;
+
+        this.shopGridContent = this.add.container(gridViewport.x, this.shopGridBaseY);
+        wholeContainer.add(this.shopGridContent);
 
         WEAPON_CATALOG.forEach((weapon, index) => {
             const column = index % gridColumns;
             const row = Math.floor(index / gridColumns);
             const tilePosition = {
                 x: startX + column * gridSpacingX,
-                y: startY + row * gridSpacingY
+                y: row * gridSpacingY
             };
             const tile = this.add.container(tilePosition.x, tilePosition.y);
             const tileBackground = this.add.rexRoundRectangle(0, 0, tileWidth, tileHeight, 24, 0xfafcf9, 1);
             tileBackground.setStrokeStyle(5, weapon.accentColor, 1);
             tileBackground.setInteractive({ useHandCursor: true });
 
-            const previewBackground = this.add.rexRoundRectangle(0, tileHeight >= 200 ? -22 : -12, tileWidth - 80, tileHeight >= 200 ? 120 : 88, 18, weapon.accentColor, 0.18);
+            const previewBackground = this.add.rexRoundRectangle(0, -36, tileWidth - 86, 72, 18, weapon.accentColor, 0.18);
             previewBackground.setStrokeStyle(4, weapon.accentColor, 1);
-            const previewLabel = this.add.text(0, tileHeight >= 200 ? -40 : -25, "PLACEHOLDER", {
-                font: tileHeight >= 200 ? "bold 18px Arial" : "bold 14px Arial",
+            const previewLabel = this.add.text(0, -51, "PLACEHOLDER", {
+                font: "bold 13px Arial",
                 fill: "#1b1b1b"
             }).setOrigin(0.5);
-            const previewName = this.add.text(0, tileHeight >= 200 ? -2 : 10, weapon.placeholderLabel, {
-                font: tileHeight >= 200 ? "38px Arial" : "28px Arial",
+            const previewName = this.add.text(0, -19, weapon.placeholderLabel, {
+                font: "28px Arial",
                 fill: "#1b1b1b"
             }).setOrigin(0.5);
-            const weaponName = this.add.text(0, tileHeight >= 200 ? 72 : 52, weapon.name, {
-                font: tileHeight >= 200 ? "bold 26px Arial" : "bold 21px Arial",
+            const weaponName = this.add.text(0, 13, weapon.name, {
+                font: "bold 18px Arial",
                 fill: "#000000",
                 align: "center",
-                wordWrap: { width: tileWidth - 40 }
-            }).setOrigin(0.5);
-            const stateText = this.add.text(0, tileHeight >= 200 ? 104 : 72, "", {
-                font: tileHeight >= 200 ? "20px Arial" : "18px Arial",
+                wordWrap: { width: tileWidth - 34 }
+            }).setOrigin(0.5, 0);
+            const stateText = this.add.text(0, 68, "", {
+                font: "18px Arial",
                 fill: "#1b1b1b",
                 align: "center"
-            }).setOrigin(0.5);
+            }).setOrigin(0.5, 0);
 
             tileBackground.on("pointerover", () => {
+                if (this.shopGridDragPointerId !== undefined) {
+                    return;
+                }
+
                 this.focusShopWeapon(weapon.id);
             });
 
             tileBackground.on("pointerup", () => {
+                if ((this.shopGridSuppressTapUntil ?? 0) > this.time.now) {
+                    return;
+                }
+
                 this.focusShopWeapon(weapon.id);
             });
 
             tile.add([tileBackground, previewBackground, previewLabel, previewName, weaponName, stateText]);
-            wholeContainer.add(tile);
-            this.shopCards.push({ weapon, tileBackground, stateText });
+            this.shopGridContent.add(tile);
+            this.shopCards.push({ weapon, tile, tileBackground, stateText, tileHeight });
         });
 
-        this.detailPreviewBackground = this.add.rexRoundRectangle(380, -55, 270, 190, 24, 0xffffff, 1);
-        this.detailPreviewBackground.setStrokeStyle(5, 0x8ecae6, 1);
-        this.detailPlaceholderLabel = this.add.text(380, -83, "PLACEHOLDER", {
-            font: "bold 30px Arial",
-            fill: "#1b1b1b"
-        }).setOrigin(0.5);
-        this.detailPreviewName = this.add.text(380, -28, "", {
-            font: "58px Arial",
-            fill: "#1b1b1b"
-        }).setOrigin(0.5);
-        this.detailWeaponName = this.add.text(380, 105, "", {
-            font: "bold 50px Arial",
+        const gridPanelTop = gridPanelBounds.y - gridPanelBounds.height / 2;
+        const gridPanelBottom = gridPanelBounds.y + gridPanelBounds.height / 2;
+        const gridPanelLeft = gridPanelBounds.x - gridPanelBounds.width / 2;
+        const gridPanelRight = gridPanelBounds.x + gridPanelBounds.width / 2;
+        const gridViewportTop = gridViewport.y - gridViewport.height / 2;
+        const gridViewportBottom = gridViewport.y + gridViewport.height / 2;
+        const gridViewportLeft = gridViewport.x - gridViewport.width / 2;
+        const gridViewportRight = gridViewport.x + gridViewport.width / 2;
+        const gridCoverColor = 0xe5efe9;
+
+        const gridTopCover = this.add.rectangle(
+            gridPanelBounds.x,
+            (gridPanelTop + gridViewportTop) / 2,
+            gridPanelBounds.width - 8,
+            gridViewportTop - gridPanelTop,
+            gridCoverColor,
+            1
+        );
+        const gridBottomCover = this.add.rectangle(
+            gridPanelBounds.x,
+            (gridPanelBottom + gridViewportBottom) / 2,
+            gridPanelBounds.width - 8,
+            gridPanelBottom - gridViewportBottom,
+            gridCoverColor,
+            1
+        );
+        const gridLeftCover = this.add.rectangle(
+            (gridPanelLeft + gridViewportLeft) / 2,
+            gridViewport.y,
+            gridViewportLeft - gridPanelLeft,
+            gridViewport.height,
+            gridCoverColor,
+            1
+        );
+        const gridRightCover = this.add.rectangle(
+            (gridPanelRight + gridViewportRight) / 2,
+            gridViewport.y,
+            gridPanelRight - gridViewportRight,
+            gridViewport.height,
+            gridCoverColor,
+            1
+        );
+        wholeContainer.add([gridTopCover, gridBottomCover, gridLeftCover, gridRightCover]);
+
+        const gridTitle = this.add.text(gridPanelBounds.x, -230, "Weapons", {
+            font: "48px Arial",
             fill: "#000000"
         }).setOrigin(0.5);
-        this.detailDescription = this.add.text(380, 190, "", {
-            font: "30px Arial",
+        const detailTitle = this.add.text(detailPanelBounds.x, -230, "Details", {
+            font: "48px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        wholeContainer.add([gridTitle, detailTitle]);
+
+        this.shopGridTrack = this.add.rexRoundRectangle(
+            gridPanelBounds.x + gridPanelBounds.width / 2 - 18,
+            gridViewport.y,
+            10,
+            gridViewport.height,
+            5,
+            0x1b1b1b,
+            0.12
+        );
+        this.shopGridThumb = this.add.rexRoundRectangle(
+            gridPanelBounds.x + gridPanelBounds.width / 2 - 18,
+            gridViewport.y - gridViewport.height / 2 + Math.max(70, gridViewport.height * (gridViewport.height / Math.max(contentHeight, gridViewport.height))) / 2,
+            10,
+            Math.max(70, gridViewport.height * (gridViewport.height / Math.max(contentHeight, gridViewport.height))),
+            5,
+            0x3fafaa,
+            1
+        );
+        wholeContainer.add([this.shopGridTrack, this.shopGridThumb]);
+
+        this.detailPreviewBackground = this.add.rexRoundRectangle(380, -70, 270, 170, 24, 0xffffff, 1);
+        this.detailPreviewBackground.setStrokeStyle(5, 0x8ecae6, 1);
+        this.detailPlaceholderLabel = this.add.text(380, -96, "PLACEHOLDER", {
+            font: "bold 28px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        this.detailPreviewName = this.add.text(380, -44, "", {
+            font: "50px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        this.detailWeaponName = this.add.text(380, 44, "", {
+            font: "bold 40px Arial",
+            fill: "#000000",
+            align: "center",
+            wordWrap: { width: 560 }
+        }).setOrigin(0.5, 0);
+        this.detailDescription = this.add.text(380, 108, "", {
+            font: "28px Arial",
+            fill: "#1b1b1b",
+            align: "center",
+            wordWrap: { width: 560 },
+            lineSpacing: 4
+        }).setOrigin(0.5, 0);
+        this.detailStats = this.add.text(380, 184, "", {
+            font: "22px Arial",
+            fill: "#1b1b1b",
+            align: "center",
+            wordWrap: { width: 560 },
+            lineSpacing: 4
+        }).setOrigin(0.5, 0);
+        this.detailState = this.add.text(380, 334, "", {
+            font: "24px Arial",
             fill: "#1b1b1b",
             align: "center",
             wordWrap: { width: 560 }
-        }).setOrigin(0.5);
-        this.detailStats = this.add.text(380, 305, "", {
-            font: "28px Arial",
-            fill: "#1b1b1b",
-            align: "center"
-        }).setOrigin(0.5);
-        this.detailState = this.add.text(380, 395, "", {
-            font: "30px Arial",
-            fill: "#1b1b1b",
-            align: "center"
-        }).setOrigin(0.5);
+        }).setOrigin(0.5, 0);
 
         wholeContainer.add([
             this.detailPreviewBackground,
@@ -406,7 +531,7 @@ class ShopMenu extends Menu {
 
         this.shopActionButton = createTextButton(this, {
             x: 380,
-            y: 470,
+            y: 430,
             width: 300,
             height: 96,
             label: "",
@@ -422,7 +547,7 @@ class ShopMenu extends Menu {
 
         const backButton = createTextButton(this, {
             x: -690,
-            y: 385,
+            y: 430,
             width: 280,
             height: 100,
             label: "Main Menu",
@@ -435,6 +560,64 @@ class ShopMenu extends Menu {
         });
 
         this.refreshShopState();
+        this.setShopGridScroll(0);
+
+        const handleShopWheel = (pointer: any, _gameObjects: any, _deltaX: number, deltaY: number) => {
+            if (this.shopGridMaxScroll <= 0 || !this.isPointerInsideShopGrid(pointer)) {
+                return;
+            }
+
+            this.setShopGridScroll(this.shopGridScroll + deltaY * 0.6);
+        };
+
+        const handleShopPointerDown = (pointer: any) => {
+            if (!this.isPointerInsideShopGrid(pointer)) {
+                return;
+            }
+
+            this.shopGridDragPointerId = pointer.id;
+            this.shopGridDragStartY = pointer.y;
+            this.shopGridDragStartScroll = this.shopGridScroll;
+            this.shopGridDidDrag = false;
+        };
+
+        const handleShopPointerMove = (pointer: any) => {
+            if (this.shopGridDragPointerId !== pointer.id || !pointer.isDown) {
+                return;
+            }
+
+            const dragDistance = pointer.y - this.shopGridDragStartY;
+
+            if (Math.abs(dragDistance) > 8) {
+                this.shopGridDidDrag = true;
+            }
+
+            this.setShopGridScroll(this.shopGridDragStartScroll - dragDistance);
+        };
+
+        const endShopPointerDrag = (pointer: any) => {
+            if (this.shopGridDragPointerId !== pointer.id) {
+                return;
+            }
+
+            if (this.shopGridDidDrag) {
+                this.shopGridSuppressTapUntil = this.time.now + 120;
+            }
+
+            this.shopGridDragPointerId = undefined;
+            this.shopGridDidDrag = false;
+        };
+
+        this.input.on("wheel", handleShopWheel);
+        this.input.on("pointerdown", handleShopPointerDown);
+        this.input.on("pointermove", handleShopPointerMove);
+        this.input.on("pointerup", endShopPointerDrag);
+        this.events.once("shutdown", () => {
+            this.input.off("wheel", handleShopWheel);
+            this.input.off("pointerdown", handleShopPointerDown);
+            this.input.off("pointermove", handleShopPointerMove);
+            this.input.off("pointerup", endShopPointerDrag);
+        });
 
         this.tweens.add({
             targets: wholeContainer,
@@ -470,20 +653,15 @@ class ShopMenu extends Menu {
         const focusedWeapon = getWeaponDefinition(this.focusedWeaponId);
         const focusedUnlocked = isWeaponUnlocked(this.playerProfile, focusedWeapon.id);
         const focusedSelected = this.playerProfile.selectedWeaponId === focusedWeapon.id;
+        const detailStatLines = this.getShopDetailStatLines(focusedWeapon);
 
         this.detailPreviewBackground.setFillStyle(focusedWeapon.accentColor, 0.18);
         this.detailPreviewBackground.setStrokeStyle(5, focusedWeapon.accentColor, 1);
         this.detailPreviewName.setText(focusedWeapon.placeholderLabel);
         this.detailWeaponName.setText(focusedWeapon.name);
         this.detailDescription.setText(focusedWeapon.description);
-        this.detailStats.setText([
-            `Body Damage: ${focusedWeapon.projectile.damage.body}`,
-            `Head Damage: ${focusedWeapon.projectile.damage.head}`,
-            `Shot Speed: x${focusedWeapon.powerMultiplier.toFixed(2)}`,
-            `Pierce: ${focusedWeapon.projectile.pierceCount ?? 0}`,
-            ...getProjectileStatusSummary(focusedWeapon.projectile),
-            focusedWeapon.cost > 0 ? `Price: $${focusedWeapon.cost}` : "Included from the start"
-        ].join("\n"));
+        this.detailStats.setFontSize(detailStatLines.length >= 7 ? 18 : detailStatLines.length >= 5 ? 20 : 22);
+        this.detailStats.setText(detailStatLines.join("\n"));
         this.detailState.setText(
             focusedSelected
                 ? "Currently equipped"
@@ -491,6 +669,10 @@ class ShopMenu extends Menu {
                     ? "Unlocked and ready to equip"
                     : `Locked until you buy it for $${focusedWeapon.cost}`
         );
+
+        this.detailDescription.setY(this.detailWeaponName.y + this.detailWeaponName.height + 12);
+        this.detailStats.setY(this.detailDescription.y + this.detailDescription.height + 12);
+        this.detailState.setY(this.detailStats.y + this.detailStats.height + 12);
 
         if (focusedSelected) {
             this.shopActionButton.label.setText("Equipped");
@@ -504,7 +686,7 @@ class ShopMenu extends Menu {
 
         this.shopActionButton.background.setFillStyle(focusedWeapon.accentColor, 1);
 
-        this.shopCards.forEach((card: { weapon: WeaponDefinition; tileBackground: any; stateText: GameText }) => {
+        this.shopCards.forEach((card: { weapon: WeaponDefinition; tile: GameContainer; tileBackground: any; stateText: GameText; tileHeight: number }) => {
             const unlocked = isWeaponUnlocked(this.playerProfile, card.weapon.id);
             const selected = this.playerProfile.selectedWeaponId === card.weapon.id;
             const focused = this.focusedWeaponId === card.weapon.id;
@@ -524,5 +706,93 @@ class ShopMenu extends Menu {
 
             card.stateText.setText(`$${card.weapon.cost}`);
         });
+    }
+
+    getShopDetailStatLines(weapon: WeaponDefinition): string[] {
+        const lines = [
+            `Damage: B ${weapon.projectile.damage.body} | H ${weapon.projectile.damage.head}`,
+            `Shot Speed: x${weapon.powerMultiplier.toFixed(2)} | Pierce: ${weapon.projectile.pierceCount ?? 0}`
+        ];
+
+        if (weapon.projectile.healPlayerOnHit && weapon.projectile.healPlayerOnHit > 0) {
+            lines.push(`Heal: +${weapon.projectile.healPlayerOnHit} on hit`);
+        }
+
+        if (weapon.projectile.healPlayerOnKill && weapon.projectile.healPlayerOnKill > 0) {
+            lines.push(`Heal: +${weapon.projectile.healPlayerOnKill} on kill`);
+        }
+
+        (weapon.projectile.statusEffects ?? []).forEach((effect: EnemyStatusEffectConfig) => {
+            switch (effect.kind) {
+            case "bounty":
+                lines.push(`Bounty: +${formatModifierPercent(effect.rewardMultiplierPerStack)} per stack`);
+                break;
+            case "burn":
+                lines.push(`Burn: ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`);
+                break;
+            case "scatter":
+                lines.push(`Scatter: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} spread per stack`);
+                break;
+            case "jam":
+                lines.push(`Slow: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay per stack`);
+                break;
+            }
+        });
+
+        lines.push(weapon.cost > 0 ? `Price: $${weapon.cost}` : "Included from the start");
+
+        return lines;
+    }
+
+    isPointerInsideShopGrid(pointer: any): boolean {
+        if (!this.shopWholeContainer || !this.shopGridViewport) {
+            return false;
+        }
+
+        const left = this.shopWholeContainer.x + this.shopGridViewport.x - this.shopGridViewport.width / 2;
+        const top = this.shopWholeContainer.y + this.shopGridViewport.y - this.shopGridViewport.height / 2;
+
+        return pointer.x >= left
+            && pointer.x <= left + this.shopGridViewport.width
+            && pointer.y >= top
+            && pointer.y <= top + this.shopGridViewport.height;
+    }
+
+    setShopGridScroll(nextScroll: number): void {
+        this.shopGridScroll = Phaser.Math.Clamp(nextScroll, 0, this.shopGridMaxScroll ?? 0);
+
+        if (this.shopGridContent) {
+            this.shopGridContent.y = this.shopGridBaseY - this.shopGridScroll;
+        }
+
+        if (this.shopGridViewport && this.shopCards) {
+            const viewportTop = this.shopGridViewport.y - this.shopGridViewport.height / 2;
+            const viewportBottom = this.shopGridViewport.y + this.shopGridViewport.height / 2;
+
+            this.shopCards.forEach((card: { tile: GameContainer; tileHeight: number }) => {
+                const tileCenterY = this.shopGridContent.y + card.tile.y;
+                card.tile.setVisible(
+                    tileCenterY + card.tileHeight / 2 >= viewportTop
+                    && tileCenterY - card.tileHeight / 2 <= viewportBottom
+                );
+            });
+        }
+
+        if (!this.shopGridTrack || !this.shopGridThumb) {
+            return;
+        }
+
+        const thumbVisible = (this.shopGridMaxScroll ?? 0) > 0;
+        this.shopGridTrack.setVisible(thumbVisible);
+        this.shopGridThumb.setVisible(thumbVisible);
+
+        if (!thumbVisible) {
+            return;
+        }
+
+        const travelDistance = this.shopGridTrack.height - this.shopGridThumb.height;
+        const progress = this.shopGridScroll / this.shopGridMaxScroll;
+        const trackTop = this.shopGridTrack.y - this.shopGridTrack.height / 2;
+        this.shopGridThumb.y = trackTop + this.shopGridThumb.height / 2 + travelDistance * progress;
     }
 }
