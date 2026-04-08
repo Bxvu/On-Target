@@ -42,6 +42,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html _site/
+          cp -r assets _site/assets
           cp -r dist _site/dist
           cp -r lib _site/lib
 
