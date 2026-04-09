@@ -6,7 +6,8 @@ const LEVEL_IMAGE_ASSETS: Array<[string, string]> = [
     ["aOpponentArm", "armoredOpponent-arm.png"],
     ["arrow", "arrow.png"],
     ["rock", "rock.png"],
-    ["bow", "bow.png"]
+    ["bow", "bow.png"],
+    ["sword", "sword.png"]
 ];
 
 const PLAYER_SPAWN = { x: 75, y: 850 };
@@ -192,6 +193,22 @@ class LevelScene extends LooseScene {
         } as PauseSceneData);
         this.scene.bringToTop("PauseScene");
         this.scene.pause();
+    }
+
+    isWaveModeScene(): boolean {
+        return this.currentLevel === "TimedLevel" || this.currentLevel === "EndlessLevel";
+    }
+
+    getEnemyAttackDelayCycles(humanoid: RagdollPerson): number {
+        return Math.max(0, humanoid.baseDelayAttack ?? humanoid.delayAttack ?? 0);
+    }
+
+    getEnemyAlternateProjectileChance(): number {
+        return ENEMY_ALTERNATE_PROJECTILE_CHANCE;
+    }
+
+    getTimedPowerupDropChance(): number {
+        return TIMED_POWERUP_DROP_CHANCE;
     }
 
     createPlayerRig(): void {
@@ -450,9 +467,9 @@ class LevelScene extends LooseScene {
 
     maybeDropTimedPowerup(person: RagdollPerson): void {
         if (
-            this.currentLevel !== "TimedLevel" ||
+            !this.isWaveModeScene() ||
             this.timedPowerups.length >= 3 ||
-            Math.random() >= TIMED_POWERUP_DROP_CHANCE
+            Math.random() >= this.getTimedPowerupDropChance()
         ) {
             return;
         }
@@ -888,7 +905,7 @@ class LevelScene extends LooseScene {
 
         humanoid.timer! += delta;
 
-        if (humanoid.currentDelay! < humanoid.delayAttack!) {
+        if (humanoid.currentDelay! < this.getEnemyAttackDelayCycles(humanoid)) {
             if (humanoid.timer! >= humanoid.attackInterval!) {
                 humanoid.timer! -= humanoid.attackInterval!;
                 humanoid.currentDelay! += 1;
@@ -928,8 +945,16 @@ class LevelScene extends LooseScene {
         const distanceX = playerChest.x - chest.x;
         const facingDirection = distanceX >= 0 ? 1 : -1;
         const distanceToPlayer = Math.abs(distanceX);
+        const meleeAttackRateMultiplier = Math.max(0.2, humanoid.meleeAttackRateMultiplier ?? 1);
+        const moveSpeedMultiplier = Math.max(0.2, humanoid.moveSpeedMultiplier ?? 1);
 
         humanoid.facingDirection = facingDirection;
+
+        if ((humanoid.behaviorDelayRemainingMs ?? 0) > 0) {
+            humanoid.behaviorDelayRemainingMs = Math.max(0, (humanoid.behaviorDelayRemainingMs ?? 0) - delta);
+            this.setCombatAction(humanoid, "idle");
+            return;
+        }
 
         if (humanoid.actionState?.kind === "meleeWindup") {
             this.applyDirectionalAttackForce(
@@ -954,7 +979,7 @@ class LevelScene extends LooseScene {
             }
 
             if (actionComplete) {
-                this.setCombatAction(humanoid, "meleeRecover", meleeConfig.recoverMs);
+                this.setCombatAction(humanoid, "meleeRecover", meleeConfig.recoverMs * meleeAttackRateMultiplier);
             }
 
             return;
@@ -982,13 +1007,13 @@ class LevelScene extends LooseScene {
                 playerChest.y,
                 MELEE_ATTACK_ARM_FORCE
             );
-            this.setCombatAction(humanoid, "meleeWindup", meleeConfig.windupMs);
+            this.setCombatAction(humanoid, "meleeWindup", meleeConfig.windupMs * meleeAttackRateMultiplier);
             return;
         }
 
         if (distanceToPlayer > meleeConfig.preferredRange) {
             this.setCombatAction(humanoid, "walk");
-            this.moveHumanoid(humanoid, facingDirection * meleeConfig.moveSpeed * delta, 0);
+            this.moveHumanoid(humanoid, facingDirection * meleeConfig.moveSpeed * moveSpeedMultiplier * delta, 0);
             return;
         }
 
@@ -1263,6 +1288,8 @@ class LevelScene extends LooseScene {
         let aimSpreadMultiplier = 1;
         let attackIntervalMultiplier = 1;
         let throwForceMultiplier = 1;
+        let meleeAttackRateMultiplier = 1;
+        let moveSpeedMultiplier = 1;
 
         ENEMY_STATUS_ORDER.forEach((statusKind) => {
             const activeStatus = humanoid.activeStatusEffects?.[statusKind];
@@ -1278,10 +1305,12 @@ class LevelScene extends LooseScene {
             case "scatter":
                 aimSpreadMultiplier += activeStatus.effect.aimSpreadMultiplierPerStack * activeStatus.stacks;
                 throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                meleeAttackRateMultiplier += activeStatus.effect.aimSpreadMultiplierPerStack * activeStatus.stacks;
                 break;
             case "jam":
                 attackIntervalMultiplier += activeStatus.effect.attackIntervalMultiplierPerStack * activeStatus.stacks;
                 throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                moveSpeedMultiplier /= 1 + (activeStatus.effect.attackIntervalMultiplierPerStack * activeStatus.stacks);
                 break;
             default:
                 break;
@@ -1291,6 +1320,8 @@ class LevelScene extends LooseScene {
         humanoid.rewardMultiplier = rewardMultiplier;
         humanoid.aimSpreadMultiplier = aimSpreadMultiplier;
         humanoid.throwForceMultiplier = Math.max(0.2, throwForceMultiplier);
+        humanoid.meleeAttackRateMultiplier = Math.max(0.2, meleeAttackRateMultiplier);
+        humanoid.moveSpeedMultiplier = Math.max(0.2, moveSpeedMultiplier);
 
         if (humanoid.baseAttackInterval != null) {
             humanoid.attackInterval = Math.max(250, humanoid.baseAttackInterval * attackIntervalMultiplier);
@@ -1494,7 +1525,7 @@ class LevelScene extends LooseScene {
 
         this.isLevelEnding = true;
 
-        if (this.currentLevel !== "TimedLevel") {
+        if (!this.isWaveModeScene()) {
             this.events.emit("levelEnd", { victory: true });
             this.addSlowdown();
             this.time.delayedCall(5000, () => {
@@ -1572,7 +1603,7 @@ class LevelScene extends LooseScene {
     }
 
     spawnEnemy(config: EnemySpawnConfig): RagdollPerson {
-        const resolvedArchetype = resolveEnemyArchetype(config.archetype);
+        const resolvedArchetype = resolveEnemyArchetype(config.archetype, this.getEnemyAlternateProjectileChance());
         const enemy = this.assignCombatId(this.ragdollFactory.createEnemy(config.x, config.y, config.scale, {
             staticBody: config.staticBody,
             health: config.health,
@@ -1583,10 +1614,16 @@ class LevelScene extends LooseScene {
 
         enemy.archetype = resolvedArchetype;
         enemy.behaviorKind = resolvedArchetype.behavior;
+        enemy.behaviorDelayRemainingMs = resolvedArchetype.melee?.startupDelayMs ?? 0;
         enemy.spawnConfig = {
             ...config,
             archetype: resolvedArchetype
         };
+
+        if (resolvedArchetype.behavior === "melee") {
+            this.attachMeleeWeaponSprite(enemy, config.scale, config.flip);
+        }
+
         return enemy;
     }
 
@@ -1784,6 +1821,20 @@ class LevelScene extends LooseScene {
         }
 
         return weaponSprite;
+    }
+
+    attachMeleeWeaponSprite(humanoid: RagdollPerson, scale: number, flip: boolean): void {
+        const scaleMagnitude = Math.abs(scale) || 1;
+        const swordSprite = this.add.sprite(0, 0, "sword") as LinkedSprite;
+
+        swordSprite.linkedBody = humanoid.throwingArm;
+        swordSprite.localOffsetX = -12 * scaleMagnitude;
+        swordSprite.localOffsetY = 22 * scaleMagnitude;
+        swordSprite.rotationOffset = -Math.PI * 0.75;
+        swordSprite.setScale(0.1 * scaleMagnitude);
+        swordSprite.setFlipX(flip);
+        humanoid.linkedSprites.push(swordSprite);
+        this.ragdollFactory.syncLinkedSprites(humanoid);
     }
 
     checkArrowCollisions(arrowList: ArrowCollection, person: RagdollPerson): void {
@@ -2028,6 +2079,66 @@ class LevelScene extends LooseScene {
         });
     }
 
+    shouldRemoveFadedEnemyCorpses(): boolean {
+        return loadPlayerProfile().removeFadedEnemyCorpses;
+    }
+
+    removeArrowFromCollections(arrow: MatterArrow): void {
+        const spawnedArrowIndex = this.spawnedArrows.indexOf(arrow);
+
+        if (spawnedArrowIndex >= 0) {
+            this.spawnedArrows.splice(spawnedArrowIndex, 1);
+        }
+
+        const opponentArrowIndex = this.opponentArrows.indexOf(arrow);
+
+        if (opponentArrowIndex >= 0) {
+            this.opponentArrows.splice(opponentArrowIndex, 1);
+        }
+    }
+
+    cleanupDeadEnemyCorpse(person: RagdollPerson): void {
+        this.removeHumanoid(person);
+
+        person.linkedArrows.slice().forEach((linkedArrow) => {
+            this.removeArrowFromCollections(linkedArrow);
+
+            if (linkedArrow.bodyConstraint) {
+                this.matter.world.removeConstraint(linkedArrow.bodyConstraint);
+            }
+
+            if (linkedArrow.active) {
+                linkedArrow.destroy();
+            }
+        });
+        person.linkedArrows = [];
+
+        person.constraints.forEach((constraint) => {
+            this.matter.world.removeConstraint(constraint);
+        });
+
+        person.bodies.forEach((bodyPart) => {
+            this.matter.world.remove(bodyPart, true);
+        });
+
+        person.linkedSprites.forEach((sprite) => {
+            if (sprite.active) {
+                sprite.destroy();
+            }
+        });
+
+        person.healthDisplay?.destroy();
+        person.statusDisplay?.destroy();
+    }
+
+    removeHumanoid(person: RagdollPerson): void {
+        const humanoidIndex = this.humanoids.indexOf(person);
+
+        if (humanoidIndex >= 0) {
+            this.humanoids.splice(humanoidIndex, 1);
+        }
+    }
+
     handlePersonDeath(person: RagdollPerson, sourceProjectile?: ProjectileConfig): void {
         if (person.dead) {
             return;
@@ -2103,7 +2214,12 @@ class LevelScene extends LooseScene {
                 alpha: { from: 1, to: 0.25 },
                 duration: 2000,
                 ease: "Cubic.easeOut",
-                repeat: 0
+                repeat: 0,
+                onComplete: () => {
+                    if (person !== this.player && this.shouldRemoveFadedEnemyCorpses()) {
+                        this.cleanupDeadEnemyCorpse(person);
+                    }
+                }
             });
         });
     }

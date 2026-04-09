@@ -427,6 +427,7 @@ const GROUND_BRUISER_ARCHETYPE: EnemyArchetype = {
         damage: 2,
         windupMs: 450,
         recoverMs: 800,
+        startupDelayMs: 2500,
         telegraphColor: 0xff7b00,
         telegraphThickness: 5,
         telegraphOuterStrength: 1
@@ -919,7 +920,8 @@ function createDefaultPlayerProfile(): PlayerProfile {
     return {
         currency: 0,
         unlockedWeaponIds: [STARTER_WEAPON.id],
-        selectedWeaponId: STARTER_WEAPON.id
+        selectedWeaponId: STARTER_WEAPON.id,
+        removeFadedEnemyCorpses: false
     };
 }
 
@@ -936,7 +938,8 @@ function normalizePlayerProfile(profile?: Partial<PlayerProfile> | null): Player
     return {
         currency: Math.max(0, Math.floor(profile?.currency ?? defaultProfile.currency)),
         unlockedWeaponIds,
-        selectedWeaponId
+        selectedWeaponId,
+        removeFadedEnemyCorpses: profile?.removeFadedEnemyCorpses ?? defaultProfile.removeFadedEnemyCorpses
     };
 }
 
@@ -1023,12 +1026,12 @@ function createEnemySpawnConfig(config: Omit<EnemySpawnConfig, "archetype"> & { 
     };
 }
 
-function resolveEnemyArchetype(archetype: EnemyArchetype): EnemyArchetype {
+function resolveEnemyArchetype(archetype: EnemyArchetype, alternateProjectileChance = ENEMY_ALTERNATE_PROJECTILE_CHANCE): EnemyArchetype {
     if (archetype.behavior !== "ranged" || !archetype.projectile || archetype.projectile.id !== ENEMY_ARROW_CONFIG.id) {
         return archetype;
     }
 
-    if (Math.random() >= ENEMY_ALTERNATE_PROJECTILE_CHANCE) {
+    if (Math.random() >= alternateProjectileChance) {
         return archetype;
     }
 

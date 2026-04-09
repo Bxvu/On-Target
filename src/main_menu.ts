@@ -65,25 +65,31 @@ class MainMenu extends Menu {
             scene: SceneKey;
         }> = [
             {
-                x: -540,
+                x: -700,
                 label: "Timed\nMode",
                 color: 0xffafaa,
                 scene: "TimedLevel"
             },
             {
-                x: -180,
+                x: -350,
+                label: "Endless",
+                color: 0xff7b7b,
+                scene: "EndlessLevel"
+            },
+            {
+                x: 0,
                 label: "Credits",
                 color: 0xffffaa,
                 scene: "Credits"
             },
             {
-                x: 180,
+                x: 350,
                 label: "Shop",
                 color: 0xcdb4db,
                 scene: "ShopMenu"
             },
             {
-                x: 540,
+                x: 700,
                 label: "Settings",
                 color: 0x8ecae6,
                 scene: "SettingsMenu"
@@ -94,11 +100,11 @@ class MainMenu extends Menu {
             const button = createTextButton(this, {
                 x: buttonConfig.x,
                 y: 300,
-                width: 300,
+                width: 240,
                 height: 170,
                 label: buttonConfig.label,
                 backgroundColor: buttonConfig.color,
-                font: "bold 44px Arial",
+                font: "bold 40px Arial",
                 parent: wholeContainer
             });
 
@@ -129,9 +135,10 @@ class SettingsMenu extends Menu {
     }
 
     create(): void {
+        this.playerProfile = loadPlayerProfile();
         const offlineModeStatus = getOfflineModeStatus();
         const wholeContainer = this.add.container(1920 / 2, -1000);
-        const panel = this.add.rexRoundRectangle(0, 0, 1100, 780, 30, 0x99b0af, 1);
+        const panel = this.add.rexRoundRectangle(0, 0, 1100, 860, 30, 0x99b0af, 1);
         panel.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         wholeContainer.add(panel);
 
@@ -141,7 +148,7 @@ class SettingsMenu extends Menu {
         }).setOrigin(0.5);
         const subtitle = this.add.text(
             0,
-            -180,
+            -205,
             "Move display options here and keep a local copy ready before your connection drops.",
             {
                 font: "34px Arial",
@@ -152,7 +159,7 @@ class SettingsMenu extends Menu {
         ).setOrigin(0.5);
         const helperText = this.add.text(
             0,
-            -65,
+            -120,
             "Offline mode now caches this page so scene changes keep working even if your Wi-Fi drops mid-run.",
             {
                 font: "28px Arial",
@@ -161,24 +168,46 @@ class SettingsMenu extends Menu {
                 wordWrap: { width: 820 }
             }
         ).setOrigin(0.5);
-        const statusTitle = this.add.text(0, 170, offlineModeStatus.title, {
+        const cleanupTitle = this.add.text(0, 95, "Enemy corpse cleanup", {
+            font: "bold 40px Arial",
+            fill: "#000000",
+            align: "center"
+        }).setOrigin(0.5);
+        const cleanupDescription = this.add.text(
+            0,
+            150,
+            "When enabled, enemy body parts and stuck arrows get removed after their fade-out finishes.",
+            {
+                font: "28px Arial",
+                fill: "#1b1b1b",
+                align: "center",
+                wordWrap: { width: 820 }
+            }
+        ).setOrigin(0.5);
+        this.corpseCleanupStatusText = this.add.text(0, 300, "", {
+            font: "28px Arial",
+            fill: "#1b1b1b",
+            align: "center",
+            wordWrap: { width: 820 }
+        }).setOrigin(0.5);
+        const statusTitle = this.add.text(0, 350, offlineModeStatus.title, {
             font: "bold 40px Arial",
             fill: "#000000",
             align: "center",
             wordWrap: { width: 820 }
         }).setOrigin(0.5);
-        const statusText = this.add.text(0, 250, offlineModeStatus.detail, {
+        const statusText = this.add.text(0, 415, offlineModeStatus.detail, {
             font: "28px Arial",
             fill: "#1b1b1b",
             align: "center",
             wordWrap: { width: 820 }
         }).setOrigin(0.5);
 
-        wholeContainer.add([title, subtitle, helperText, statusTitle, statusText]);
+        wholeContainer.add([title, subtitle, helperText, cleanupTitle, cleanupDescription, this.corpseCleanupStatusText, statusTitle, statusText]);
 
         const fullscreenButton = createTextButton(this, {
             x: 0,
-            y: 40,
+            y: 10,
             width: 360,
             height: 110,
             label: "Fullscreen",
@@ -188,9 +217,28 @@ class SettingsMenu extends Menu {
         });
         bindFullscreenToggle(this, fullscreenButton);
 
+        this.corpseCleanupButton = createTextButton(this, {
+            x: 0,
+            y: 235,
+            width: 420,
+            height: 96,
+            label: "",
+            backgroundColor: 0x8ecae6,
+            font: "bold 32px Arial",
+            parent: wholeContainer
+        });
+        this.refreshCorpseCleanupSetting();
+
+        this.corpseCleanupButton.background.on("pointerup", () => {
+            this.playerProfile = updatePlayerProfile((profile) => {
+                profile.removeFadedEnemyCorpses = !profile.removeFadedEnemyCorpses;
+            });
+            this.refreshCorpseCleanupSetting();
+        });
+
         const backButton = createTextButton(this, {
             x: 0,
-            y: 355,
+            y: 365,
             width: 300,
             height: 100,
             label: "Main Menu",
@@ -208,6 +256,18 @@ class SettingsMenu extends Menu {
             duration: 500,
             ease: "Cubic.out"
         });
+    }
+
+    refreshCorpseCleanupSetting(): void {
+        const cleanupEnabled = this.playerProfile.removeFadedEnemyCorpses;
+
+        this.corpseCleanupButton.label.setText(cleanupEnabled ? "Cleanup: On" : "Cleanup: Off");
+        this.corpseCleanupButton.background.setFillStyle(cleanupEnabled ? 0x52b788 : 0x8ecae6, 1);
+        this.corpseCleanupStatusText.setText(
+            cleanupEnabled
+                ? "Faded enemy ragdolls will be destroyed to keep long runs running smoother."
+                : "Enemy ragdolls will stay behind after fading so the battlefield keeps the full carnage."
+        );
     }
 }
 

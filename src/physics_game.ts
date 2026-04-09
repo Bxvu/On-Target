@@ -20,6 +20,6 @@ const game = new Phaser.Game({
         width: 1920,
         height: 1080
     },
-    scene: [MainMenu, SettingsMenu, ShopMenu, PauseScene, SummaryScene, ...manualLevelScenes, TimedLevel, Credits],
+    scene: [MainMenu, SettingsMenu, ShopMenu, PauseScene, SummaryScene, ...manualLevelScenes, TimedLevel, EndlessLevel, Credits],
     title: "Physics Game"
 });

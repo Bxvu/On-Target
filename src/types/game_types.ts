@@ -13,6 +13,7 @@ type SceneKey =
     | "SummaryScene"
     | ManualLevelKey
     | "TimedLevel"
+    | "EndlessLevel"
     | "Credits";
 
 type MatterBody = any;
@@ -79,6 +80,9 @@ interface TextButton {
 
 interface LinkedSprite extends GameSprite {
     linkedBody: MatterBody;
+    localOffsetX?: number;
+    localOffsetY?: number;
+    rotationOffset?: number;
 }
 
 interface MatterArrow extends MatterImage {
@@ -157,16 +161,20 @@ interface RagdollPerson {
     timer?: number;
     currentDelay?: number;
     delayAttack?: number;
+    baseDelayAttack?: number;
     triggered?: boolean;
     activeStatusEffects?: Partial<Record<EnemyStatusEffectKind, EnemyStatusState>>;
     rewardMultiplier?: number;
     aimSpreadMultiplier?: number;
     throwForceMultiplier?: number;
     chargeRateMultiplier?: number;
+    meleeAttackRateMultiplier?: number;
+    moveSpeedMultiplier?: number;
     behaviorKind?: EnemyBehaviorKind;
     facingDirection?: number;
     actionState?: CombatActionState;
     meleeHitApplied?: boolean;
+    behaviorDelayRemainingMs?: number;
     archetype?: EnemyArchetype;
     loadout?: PlayerLoadout;
     spawnConfig?: EnemySpawnConfig;
@@ -260,6 +268,7 @@ interface EnemyMeleeTuning {
     damage: number;
     windupMs: number;
     recoverMs: number;
+    startupDelayMs?: number;
     telegraphColor: number;
     telegraphThickness: number;
     telegraphOuterStrength: number;
@@ -327,6 +336,7 @@ interface PlayerProfile {
     currency: number;
     unlockedWeaponIds: string[];
     selectedWeaponId: string;
+    removeFadedEnemyCorpses: boolean;
 }
 
 interface ShopStatEffect {

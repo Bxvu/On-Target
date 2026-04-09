@@ -20,6 +20,14 @@ class SummaryScene extends Menu {
         super.preload();
     }
 
+    isTimedModeResult(): boolean {
+        return this.currentLevel === "TimedLevel";
+    }
+
+    isReplayOnlyResult(): boolean {
+        return this.currentLevel === "TimedLevel" || this.currentLevel === "EndlessLevel";
+    }
+
     create(): void {
         const summaryBox = this.add.container(1920 / 2, -1000);
         const entireBox = this.add.rexRoundRectangle(0, 0, 820, 820, 30, 0x99b0af, 1);
@@ -45,8 +53,11 @@ class SummaryScene extends Menu {
 
         let duration = "";
 
-        if (this.health <= 0 && this.currentLevel === "TimedLevel") {
+        if (this.isTimedModeResult()) {
             duration = `Time Survived: ${(this.timeTaken / 1000).toFixed(3)}s`;
+        }
+        else if (this.currentLevel === "EndlessLevel") {
+            duration = `Kills: ${this.kills}`;
         }
         else if (this.kills) {
             duration = `Kills: ${this.kills}`;
@@ -78,7 +89,7 @@ class SummaryScene extends Menu {
         summaryBox.add([nextLevelBox, mainMenuBox]);
 
         const mainMenuText = this.add.text(-(750 / 4), 250, " Main\nMenu", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
-        const nextLevelText = (this.health <= 0 || this.currentLevel === "TimedLevel")
+        const nextLevelText = (this.health <= 0 || this.isReplayOnlyResult())
             ? this.add.text((750 / 2) - (750 / 4), 250, "Retry", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5)
             : this.add.text((750 / 2) - (750 / 4), 250, " Next\nLevel", { font: "50px Arial", fill: "#af00af" }).setOrigin(0.5);
 
@@ -95,7 +106,7 @@ class SummaryScene extends Menu {
                 });
 
                 nextLevelBox.on("pointerdown", () => {
-                    if (this.health <= 0 || this.currentLevel === "TimedLevel") {
+                    if (this.health <= 0 || this.isReplayOnlyResult()) {
                         this.menuLeave(summaryBox, this.currentLevel, this.currentLevel);
                     }
                     else {

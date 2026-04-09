@@ -119,6 +119,8 @@ class HumanoidFactory {
         person.aimSpreadMultiplier = 1;
         person.throwForceMultiplier = 1;
         person.chargeRateMultiplier = 1;
+        person.meleeAttackRateMultiplier = 1;
+        person.moveSpeedMultiplier = 1;
         person.behaviorKind = "ranged";
         person.facingDirection = flip ? -1 : 1;
         person.actionState = {
@@ -134,6 +136,7 @@ class HumanoidFactory {
             person.timer = 0;
             person.currentDelay = 0;
             person.delayAttack = delayAttack;
+            person.baseDelayAttack = delayAttack;
             person.triggered = false;
             person.healthDisplay = this.scene.add.text(0, 0, `${person.health}`, { font: "40px Arial", fill: "#ffFFFF" }).setOrigin(0.5, 0.5);
             person.statusDisplay = this.scene.add.text(0, 0, "", { font: "22px Arial", fill: "#1b1b1b" }).setOrigin(0.5, 0.5);
@@ -217,8 +220,19 @@ class HumanoidFactory {
                 return;
             }
 
-            sprite.setPosition(sprite.linkedBody.position.x, sprite.linkedBody.position.y);
-            sprite.setRotation(sprite.linkedBody.angle);
+            const localOffsetX = sprite.localOffsetX ?? 0;
+            const localOffsetY = sprite.localOffsetY ?? 0;
+            const bodyAngle = sprite.linkedBody.angle;
+            const cos = Math.cos(bodyAngle);
+            const sin = Math.sin(bodyAngle);
+            const worldOffsetX = cos * localOffsetX - sin * localOffsetY;
+            const worldOffsetY = sin * localOffsetX + cos * localOffsetY;
+
+            sprite.setPosition(
+                sprite.linkedBody.position.x + worldOffsetX,
+                sprite.linkedBody.position.y + worldOffsetY
+            );
+            sprite.setRotation(bodyAngle + (sprite.rotationOffset ?? 0));
         });
     }
 }
