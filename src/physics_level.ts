@@ -29,6 +29,11 @@ const HUD_STYLES = {
 
 const ENEMY_STATUS_ORDER: EnemyStatusEffectKind[] = ["bounty", "burn", "scatter", "jam"];
 const PLAYER_SHOT_SCATTER_PIXELS = 120;
+const TIMED_POWERUP_PICKUP_SCALE = 0.32;
+const TIMED_POWERUP_PICKUP_LIFETIME_MS = 9000;
+const TIMED_POWERUP_DROP_LIFETIME_MS = 6500;
+const TIMED_POWERUP_DROP_CHANCE = 0.2;
+const TIMED_POWERUP_COLLISION_RADIUS = 38;
 
 class LevelScene extends LooseScene {
     init(data: LevelInitData = {}): void {
@@ -72,6 +77,8 @@ class LevelScene extends LooseScene {
         this.kills = 0;
         this.currencyEarned = 0;
         this.overhealDecayTimerMs = 0;
+        this.activeTimedPowerups = {} as Partial<Record<TimedPowerupKind, ActiveTimedPowerupState>>;
+        this.timedPowerups = [] as TimedPowerupPickup[];
 
         this.spawnedArrows = this.createArrowCollection("player");
         this.opponentArrows = this.createArrowCollection("enemy");
@@ -153,18 +160,6 @@ class LevelScene extends LooseScene {
         pauseButton.background.on("pointerup", () => {
             this.openPauseMenu();
         });
-
-        const fullscreenButton = createTextButton(this, {
-            x: 1785,
-            y: 60,
-            width: 240,
-            height: 78,
-            label: "Fullscreen",
-            backgroundColor: 0x8ecae6,
-            depth: 25
-        });
-
-        bindFullscreenToggle(this, fullscreenButton);
     }
 
     openPauseMenu(): void {
@@ -226,6 +221,301 @@ class LevelScene extends LooseScene {
         this.matter.add.rectangle(WORLD_BOUNDS.leftWall.x, WORLD_BOUNDS.leftWall.y, WORLD_BOUNDS.leftWall.width, WORLD_BOUNDS.leftWall.height, { isStatic: true });
     }
 
+    hasActiveTimedPowerup(kind: TimedPowerupKind): boolean {
+        const activePowerup = this.activeTimedPowerups?.[kind];
+        return activePowerup != null && activePowerup.remainingMs > 0;
+    }
+
+    getTimedPowerupValue(kind: TimedPowerupKind, key: "damageBonus" | "pierceBonus"): number {
+        const activePowerup = this.activeTimedPowerups?.[kind];
+
+        if (!activePowerup || activePowerup.remainingMs <= 0) {
+            return 0;
+        }
+
+        return activePowerup.definition[key] ?? 0;
+    }
+
+    getPlayerProjectileConfig(): ProjectileConfig {
+        const projectile = this.playerLoadout.projectile;
+        const damageBonus = this.getTimedPowerupValue("damage", "damageBonus");
+        const pierceBonus = this.getTimedPowerupValue("pierce", "pierceBonus");
+
+        if (damageBonus <= 0 && pierceBonus <= 0) {
+            return projectile;
+        }
+
+        return {
+            ...projectile,
+            damage: {
+                body: projectile.damage.body + damageBonus,
+                head: projectile.damage.head + damageBonus
+            },
+            pierceCount: (projectile.pierceCount ?? 0) + pierceBonus
+        };
+    }
+
+    spawnTimedPowerup(
+        definition: TimedPowerupDefinition,
+        x: number,
+        y: number,
+        options: { staticBody?: boolean; lifetimeMs?: number; launchVelocity?: { x: number; y: number } } = {}
+    ): TimedPowerupPickup {
+        const pickup = this.matter.add.image(x, y, "rock", null) as TimedPowerupPickup;
+        const lifetimeMs = options.lifetimeMs ?? TIMED_POWERUP_PICKUP_LIFETIME_MS;
+        const isStaticBody = options.staticBody ?? true;
+
+        pickup.setCircle(TIMED_POWERUP_COLLISION_RADIUS);
+        pickup.setStatic(isStaticBody);
+        pickup.setScale(TIMED_POWERUP_PICKUP_SCALE);
+        pickup.setTint(definition.color);
+        pickup.setDepth(18);
+        pickup.body.isSensor = true;
+        pickup.body.ignoreGravity = isStaticBody;
+        pickup.body.collisionFilter.group = -30;
+        pickup.powerupDefinition = definition;
+        pickup.active = true;
+        pickup.maxLifetimeMs = lifetimeMs;
+        pickup.remainingLifetimeMs = lifetimeMs;
+        pickup.labelText = this.add.text(x, y, definition.shortLabel, {
+            font: "bold 20px Arial",
+            fill: definition.textColor
+        }).setOrigin(0.5, 0.5).setDepth(19);
+
+        if (!isStaticBody) {
+            pickup.setBounce(0.45);
+            pickup.setFriction(0.02);
+            pickup.setFrictionAir(0.008);
+
+            if (options.launchVelocity) {
+                pickup.setVelocity(options.launchVelocity.x, options.launchVelocity.y);
+            }
+        }
+
+        this.timedPowerups.push(pickup);
+        return pickup;
+    }
+
+    destroyTimedPowerup(powerup: TimedPowerupPickup): void {
+        if (!powerup || !powerup.active) {
+            return;
+        }
+
+        powerup.active = false;
+
+        const powerupIndex = this.timedPowerups.indexOf(powerup);
+
+        if (powerupIndex >= 0) {
+            this.timedPowerups.splice(powerupIndex, 1);
+        }
+
+        if (powerup.labelText) {
+            powerup.labelText.destroy();
+        }
+        this.tweens.add({
+            targets: powerup,
+            alpha: { from: powerup.alpha, to: 0 },
+            duration: 180,
+            ease: "Cubic.out",
+            onComplete: () => {
+                powerup.destroy();
+            }
+        });
+    }
+
+    syncTimedPowerupSprites(): void {
+        this.timedPowerups.forEach((powerup: TimedPowerupPickup) => {
+            if (!powerup.active || !powerup.body) {
+                return;
+            }
+
+            powerup.setPosition(powerup.body.position.x, powerup.body.position.y);
+
+            if (powerup.labelText) {
+                powerup.labelText.setPosition(powerup.body.position.x, powerup.body.position.y);
+                powerup.labelText.setAlpha(powerup.alpha);
+            }
+        });
+    }
+
+    checkTimedPowerupCollisions(arrowList: ArrowCollection): void {
+        arrowList.slice().forEach((arrow) => {
+            if (!arrow || !arrow.body || !arrow.active) {
+                return;
+            }
+
+            for (const powerup of this.timedPowerups.slice()) {
+                if (!powerup.active || !powerup.body) {
+                    continue;
+                }
+
+                const collision = this.matter.collision.collides(arrow.body, powerup.body);
+
+                if (!collision) {
+                    continue;
+                }
+
+                this.collectTimedPowerup(powerup, arrow, arrowList);
+                break;
+            }
+        });
+    }
+
+    collectTimedPowerup(powerup: TimedPowerupPickup, arrow: MatterArrow, arrowList: ArrowCollection): void {
+        const definition = powerup.powerupDefinition;
+        this.applyTimedPowerupToPlayer(definition, powerup.x, powerup.y - 48);
+        this.showTimedPowerupPickupText(definition.label, powerup.x, powerup.y - 70, definition.color);
+        this.destroyTimedPowerup(powerup);
+        this.destroyArrow(arrow, arrowList);
+        this.refreshPlayerStatusModifiers();
+        this.refreshPlayerStatusDisplay();
+    }
+
+    applyTimedPowerupToPlayer(definition: TimedPowerupDefinition, x: number, y: number): void {
+        if (definition.kind === "heal") {
+            this.healPlayer(definition.healAmount ?? 0, x, y);
+            return;
+        }
+
+        if (definition.durationMs != null && definition.durationMs > 0) {
+            this.activeTimedPowerups[definition.kind] = {
+                definition,
+                remainingMs: definition.durationMs
+            };
+        }
+    }
+
+    purchasePausePowerupOffer(offer: PausePowerupOffer): { success: boolean; message: string } {
+        if (this.player.health <= 0 || this.isLevelEnding) {
+            return {
+                success: false,
+                message: "You can't buy powerups right now."
+            };
+        }
+
+        if (this.playerProfile.currency < offer.cost) {
+            return {
+                success: false,
+                message: `You need $${offer.cost - this.playerProfile.currency} more for ${offer.label}.`
+            };
+        }
+
+        this.removePlayerCurrency(offer.cost);
+        this.applyTimedPowerupToPlayer(
+            offer.definition,
+            this.player.parts.chest.position.x,
+            this.player.parts.chest.position.y - 120
+        );
+        this.showTimedPowerupPickupText(
+            `${offer.definition.label} Purchased`,
+            this.player.parts.chest.position.x,
+            this.player.parts.chest.position.y - 170,
+            offer.definition.color
+        );
+        this.refreshPlayerStatusModifiers();
+        this.refreshPlayerStatusDisplay();
+
+        return {
+            success: true,
+            message: `${offer.label} activated.`
+        };
+    }
+
+    maybeDropTimedPowerup(person: RagdollPerson): void {
+        if (
+            this.currentLevel !== "TimedLevel" ||
+            this.timedPowerups.length >= 3 ||
+            Math.random() >= TIMED_POWERUP_DROP_CHANCE
+        ) {
+            return;
+        }
+
+        const definition = Phaser.Utils.Array.GetRandom(TIMED_POWERUP_DROP_DEFINITIONS);
+        const spawnX = person.parts.head.position.x;
+        const spawnY = person.parts.head.position.y - 30;
+        const launchVelocity = {
+            x: (Math.random() - 0.5) * 8,
+            y: -6 - (Math.random() * 2)
+        };
+
+        this.spawnTimedPowerup(definition, spawnX, spawnY, {
+            staticBody: false,
+            lifetimeMs: TIMED_POWERUP_DROP_LIFETIME_MS,
+            launchVelocity
+        });
+    }
+
+    showTimedPowerupPickupText(label: string, x: number, y: number, color: number): void {
+        const powerupText = this.add.text(x, y, label, {
+            font: "bold 24px Arial",
+            fill: `#${color.toString(16).padStart(6, "0")}`
+        }).setOrigin(0.5, 0.5).setDepth(30);
+
+        this.tweens.add({
+            targets: powerupText,
+            y: powerupText.y - 40,
+            alpha: { from: 1, to: 0 },
+            duration: 750,
+            ease: "Cubic.out",
+            onComplete: () => {
+                powerupText.destroy();
+            }
+        });
+    }
+
+    updateTimedPowerups(delta: number): void {
+        let statusChanged = false;
+        let hasActivePowerups = false;
+
+        if (!this.isLevelEnding) {
+            this.timedPowerups.slice().forEach((powerup: TimedPowerupPickup) => {
+                if (!powerup.active) {
+                    return;
+                }
+
+                powerup.remainingLifetimeMs -= delta;
+
+                if (powerup.remainingLifetimeMs <= 0) {
+                    this.destroyTimedPowerup(powerup);
+                    return;
+                }
+
+                const lifetimeProgress = Phaser.Math.Clamp(powerup.remainingLifetimeMs / powerup.maxLifetimeMs, 0.18, 1);
+                powerup.setAlpha(lifetimeProgress);
+
+                if (powerup.labelText) {
+                    powerup.labelText.setAlpha(lifetimeProgress);
+                }
+            });
+        }
+
+        PLAYER_TIMED_POWERUP_ORDER.forEach((kind) => {
+            const activePowerup = this.activeTimedPowerups?.[kind];
+
+            if (!activePowerup) {
+                return;
+            }
+
+            hasActivePowerups = true;
+
+            if (this.isLevelEnding) {
+                return;
+            }
+
+            activePowerup.remainingMs -= delta;
+
+            if (activePowerup.remainingMs <= 0) {
+                delete this.activeTimedPowerups[kind];
+                statusChanged = true;
+            }
+        });
+
+        if (statusChanged || hasActivePowerups) {
+            this.refreshPlayerStatusModifiers();
+            this.refreshPlayerStatusDisplay();
+        }
+    }
+
     update(time: number, delta: number): void {
         this.updateSceneTimer();
         this.updatePointerTracking();
@@ -237,6 +527,7 @@ class LevelScene extends LooseScene {
         const humanoidsDefeated = this.checkCombatCollisions();
         this.updateHumanoidAI(delta);
         this.updatePlayerStatusEffects(delta);
+        this.updateTimedPowerups(delta);
         this.updatePlayerOverheal(delta);
         this.updatePlayerHealthDisplay();
         this.handlePlayerDefeat();
@@ -273,7 +564,7 @@ class LevelScene extends LooseScene {
                 this.firePlayerArrow(100 + 10 / scaleMagnitude);
                 this.chargeTime = 0;
             }
-            else if (this.instaCharge) {
+            else if (this.instaCharge || this.hasActiveTimedPowerup("rapidCharge")) {
                 this.chargeTime = 100;
             }
             else if (this.chargeTime < 100) {
@@ -307,7 +598,7 @@ class LevelScene extends LooseScene {
             this.bow,
             targetX,
             targetY,
-            this.playerLoadout.projectile,
+            this.getPlayerProjectileConfig(),
             this.spawnedArrows
         );
         this.arrowsShot += 1;
@@ -331,10 +622,13 @@ class LevelScene extends LooseScene {
     syncRagdollSprites(): void {
         this.ragdollFactory.syncLinkedSprites(this.player);
         this.humanoids.forEach((humanoid: RagdollPerson) => this.ragdollFactory.syncLinkedSprites(humanoid));
+        this.syncTimedPowerupSprites();
     }
 
     checkCombatCollisions(): boolean {
         let humanoidsDefeated = true;
+
+        this.checkTimedPowerupCollisions(this.spawnedArrows);
 
         this.humanoids.forEach((humanoid: RagdollPerson) => {
             this.checkArrowCollisions(this.spawnedArrows, humanoid);
@@ -705,6 +999,30 @@ class LevelScene extends LooseScene {
             }
         });
 
+        PLAYER_TIMED_POWERUP_ORDER.forEach((kind) => {
+            const activePowerup = this.activeTimedPowerups?.[kind];
+
+            if (!activePowerup) {
+                return;
+            }
+
+            const remainingSeconds = Math.max(0.1, activePowerup.remainingMs / 1000).toFixed(1);
+
+            switch (kind) {
+            case "rapidCharge":
+                statusSegments.push(`Instant ${remainingSeconds}s`);
+                break;
+            case "damage":
+                statusSegments.push(`Damage +${activePowerup.definition.damageBonus ?? 0} ${remainingSeconds}s`);
+                break;
+            case "pierce":
+                statusSegments.push(`Pierce +${activePowerup.definition.pierceBonus ?? 0} ${remainingSeconds}s`);
+                break;
+            default:
+                break;
+            }
+        });
+
         this.player.statusDisplay.setText(statusSegments.join("  |  "));
     }
 
@@ -1002,6 +1320,12 @@ class LevelScene extends LooseScene {
             }
         }
 
+        arrow.active = false;
+
+        if (arrow.body) {
+            arrow.body.collisionFilter.mask = 0;
+        }
+
         this.tweens.add({
             targets: [arrow],
             alpha: "0",
@@ -1013,7 +1337,6 @@ class LevelScene extends LooseScene {
                     this.matter.world.removeConstraint(arrow.bodyConstraint);
                 }
 
-                arrow.active = false;
                 arrow.destroy();
             }
         });
@@ -1052,7 +1375,7 @@ class LevelScene extends LooseScene {
 
     checkArrowCollisions(arrowList: ArrowCollection, person: RagdollPerson): void {
         arrowList.slice().forEach((arrow) => {
-            if (!arrow || !arrow.body) {
+            if (!arrow || !arrow.body || !arrow.active) {
                 return;
             }
 
@@ -1279,6 +1602,8 @@ class LevelScene extends LooseScene {
             if (sourceProjectile) {
                 this.healPlayer(sourceProjectile.healPlayerOnKill ?? 0, person.parts.head.position.x, person.parts.head.position.y - 90);
             }
+
+            this.maybeDropTimedPowerup(person);
 
             const baseReward = person.archetype?.currencyReward ?? 0;
             const reward = Math.max(0, Math.round(baseReward * (person.rewardMultiplier ?? 1)));

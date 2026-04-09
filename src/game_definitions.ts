@@ -745,6 +745,121 @@ const DEFAULT_PLAYER_LOADOUT: PlayerLoadout = {
     powerMultiplier: STARTER_WEAPON.powerMultiplier
 };
 
+const PLAYER_TIMED_POWERUP_ORDER: TimedPowerupKind[] = ["rapidCharge", "damage", "pierce"];
+
+const TIMED_POWERUP_DEFINITIONS: TimedPowerupDefinition[] = [
+    {
+        id: "timed-rapid-charge",
+        kind: "rapidCharge",
+        label: "Rapid Charge",
+        shortLabel: "CHG",
+        color: 0xffd166,
+        textColor: "#1b1b1b",
+        durationMs: 5000
+    },
+    {
+        id: "timed-heal",
+        kind: "heal",
+        label: "Heal",
+        shortLabel: "HP",
+        color: 0x52b788,
+        textColor: "#ffffff",
+        healAmount: 4
+    },
+    {
+        id: "timed-damage",
+        kind: "damage",
+        label: "Damage Up",
+        shortLabel: "DMG",
+        color: 0xf94144,
+        textColor: "#ffffff",
+        durationMs: 8000,
+        damageBonus: 2
+    },
+    {
+        id: "timed-pierce",
+        kind: "pierce",
+        label: "Piercing",
+        shortLabel: "PRC",
+        color: 0x7b2cbf,
+        textColor: "#ffffff",
+        durationMs: 8000,
+        pierceBonus: 2
+    }
+];
+
+const TIMED_POWERUP_DROP_DEFINITIONS: TimedPowerupDefinition[] = [
+    {
+        id: "timed-rapid-charge-plus",
+        kind: "rapidCharge",
+        label: "Rapid Charge+",
+        shortLabel: "CHG+",
+        color: 0xffb703,
+        textColor: "#1b1b1b",
+        durationMs: 8000
+    },
+    {
+        id: "timed-heal-plus",
+        kind: "heal",
+        label: "Heal+",
+        shortLabel: "HP+",
+        color: 0x2dc653,
+        textColor: "#ffffff",
+        healAmount: 7
+    },
+    {
+        id: "timed-damage-plus",
+        kind: "damage",
+        label: "Damage Up+",
+        shortLabel: "DMG+",
+        color: 0xd00000,
+        textColor: "#ffffff",
+        durationMs: 10000,
+        damageBonus: 4
+    },
+    {
+        id: "timed-pierce-plus",
+        kind: "pierce",
+        label: "Piercing+",
+        shortLabel: "PRC+",
+        color: 0x5a189a,
+        textColor: "#ffffff",
+        durationMs: 10000,
+        pierceBonus: 4
+    }
+];
+
+const PAUSE_POWERUP_SHOP_OFFERS: PausePowerupOffer[] = [
+    {
+        id: "pause-heal-plus",
+        label: "Heal+",
+        description: "Restore 7 HP instantly.",
+        cost: 150,
+        definition: TIMED_POWERUP_DROP_DEFINITIONS[1]
+    },
+    {
+        id: "pause-rapid-charge-plus",
+        label: "Rapid Charge+",
+        description: "Instant full charge for 8 seconds.",
+        cost: 180,
+        definition: TIMED_POWERUP_DROP_DEFINITIONS[0]
+    },
+    {
+        id: "pause-damage-plus",
+        label: "Damage Up+",
+        description: "+4 body and head damage for 10 seconds.",
+        cost: 240,
+        definition: TIMED_POWERUP_DROP_DEFINITIONS[2]
+    },
+    {
+        id: "pause-pierce-plus",
+        label: "Piercing+",
+        description: "+4 pierce for 10 seconds.",
+        cost: 240,
+        definition: TIMED_POWERUP_DROP_DEFINITIONS[3]
+    }
+];
+
 const DEFAULT_TEXT_BUTTON_STYLE = {
     radius: 24,
     backgroundColor: 0x3fafaa,

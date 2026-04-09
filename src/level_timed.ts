@@ -1,3 +1,7 @@
+const TIMED_LEVEL_POWERUP_SPAWN_DELAY_MS = 6500;
+const TIMED_LEVEL_POWERUP_SPAWN_CHANCE = 0.55;
+const TIMED_LEVEL_MAX_ACTIVE_POWERUPS = 2;
+
 class TimedLevel extends LevelScene {
     constructor() {
         super("TimedLevel");
@@ -24,6 +28,14 @@ class TimedLevel extends LevelScene {
         this.events.on("nextWave", () => {
             this.totaltime += 5;
             this.nextWave();
+        });
+
+        this.time.addEvent({
+            delay: TIMED_LEVEL_POWERUP_SPAWN_DELAY_MS,
+            loop: true,
+            callback: () => {
+                this.trySpawnTimedPowerup();
+            }
         });
 
         this.events.emit("nextWave", { victory: true });
@@ -91,5 +103,22 @@ class TimedLevel extends LevelScene {
         }
 
         this.humanoids.push(...this.spawnEnemies(waveConfigs));
+    }
+
+    trySpawnTimedPowerup(): void {
+        if (
+            this.isLevelEnding ||
+            this.player.health <= 0 ||
+            this.timedPowerups.length >= TIMED_LEVEL_MAX_ACTIVE_POWERUPS ||
+            Math.random() >= TIMED_LEVEL_POWERUP_SPAWN_CHANCE
+        ) {
+            return;
+        }
+
+        const definition = Phaser.Utils.Array.GetRandom(TIMED_POWERUP_DEFINITIONS);
+        const spawnX = Math.random() * 1200 + 550;
+        const spawnY = Math.random() * 760 + 140;
+
+        this.spawnTimedPowerup(definition, spawnX, spawnY);
     }
 }

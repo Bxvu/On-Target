@@ -26,6 +26,7 @@ type ProjectileHitboxShape = "rectangle" | "circle";
 type ShopItemCategory = "bow" | "arrow" | "utility";
 type EnemyArchetypeId = "standard";
 type EnemyStatusEffectKind = "bounty" | "burn" | "scatter" | "jam";
+type TimedPowerupKind = "rapidCharge" | "heal" | "damage" | "pierce";
 type RagdollPartMap = Record<BodyPartName, MatterBody>;
 type RagdollSpriteMap = Partial<Record<BodyPartName, LinkedSprite>>;
 
@@ -90,6 +91,40 @@ interface MatterArrow extends MatterImage {
 interface ArrowCollection extends Array<MatterArrow> {
     owner: ProjectileOwner;
     fromplayer: boolean;
+}
+
+interface TimedPowerupDefinition {
+    id: string;
+    kind: TimedPowerupKind;
+    label: string;
+    shortLabel: string;
+    color: number;
+    textColor: string;
+    durationMs?: number;
+    healAmount?: number;
+    damageBonus?: number;
+    pierceBonus?: number;
+}
+
+interface PausePowerupOffer {
+    id: string;
+    label: string;
+    description: string;
+    cost: number;
+    definition: TimedPowerupDefinition;
+}
+
+interface ActiveTimedPowerupState {
+    definition: TimedPowerupDefinition;
+    remainingMs: number;
+}
+
+interface TimedPowerupPickup extends MatterImage {
+    powerupDefinition: TimedPowerupDefinition;
+    labelText?: GameText;
+    active: boolean;
+    maxLifetimeMs: number;
+    remainingLifetimeMs: number;
 }
 
 interface RagdollPerson {

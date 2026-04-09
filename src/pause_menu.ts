@@ -13,28 +13,38 @@ class PauseScene extends Menu {
     }
 
     create(): void {
+        this.playerProfile = loadPlayerProfile();
         const overlay = this.add.rectangle(1920 / 2, 1080 / 2, 1920, 1080, 0x000000, 0.55);
         overlay.setDepth(1000);
         overlay.setInteractive();
 
         const pauseContainer = this.add.container(1920 / 2, -500);
         pauseContainer.setDepth(1001);
-        const panel = this.add.rexRoundRectangle(0, 0, 900, 650, 30, 0x99b0af, 1);
+        this.pauseContainer = pauseContainer;
+        const panel = this.add.rexRoundRectangle(0, 0, 1320, 760, 30, 0x99b0af, 1);
         panel.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
 
-        const title = this.add.text(0, -220, "Paused", { font: "100px Arial", fill: "#000000" }).setOrigin(0.5);
+        const title = this.add.text(-360, -275, "Paused", { font: "92px Arial", fill: "#000000" }).setOrigin(0.5);
         const subtitle = this.add.text(
-            0,
-            -130,
+            -360,
+            -195,
             "Take a breather, then jump right back in.",
             { font: "38px Arial", fill: "#1b1b1b" }
         ).setOrigin(0.5);
 
         pauseContainer.add([panel, title, subtitle]);
 
+        const controlsPanel = this.add.rexRoundRectangle(-360, 70, 420, 470, 26, 0xe5efe9, 1);
+        controlsPanel.setStrokeStyle(4, 0x7c8a87, 1);
+        const controlsTitle = this.add.text(-360, -95, "Run Controls", {
+            font: "46px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        pauseContainer.add([controlsPanel, controlsTitle]);
+
         const resumeButton = createTextButton(this, {
-            x: 0,
-            y: 10,
+            x: -360,
+            y: -10,
             width: 320,
             height: 110,
             label: "Resume",
@@ -43,9 +53,9 @@ class PauseScene extends Menu {
         });
 
         const restartButton = createTextButton(this, {
-            x: -185,
-            y: 170,
-            width: 290,
+            x: -360,
+            y: 135,
+            width: 320,
             height: 110,
             label: "Restart",
             backgroundColor: 0xffd166,
@@ -53,14 +63,87 @@ class PauseScene extends Menu {
         });
 
         const mainMenuButton = createTextButton(this, {
-            x: 185,
-            y: 170,
-            width: 290,
+            x: -360,
+            y: 280,
+            width: 320,
             height: 110,
             label: "Main Menu",
             backgroundColor: 0xef476f,
             textColor: "#ffffff",
             parent: pauseContainer
+        });
+
+        const shopPanel = this.add.rexRoundRectangle(255, 40, 720, 610, 26, 0xf8fbf7, 1);
+        shopPanel.setStrokeStyle(4, 0x7c8a87, 1);
+        const shopTitle = this.add.text(255, -215, "Powerup Shop", {
+            font: "58px Arial",
+            fill: "#000000"
+        }).setOrigin(0.5);
+        const shopSubtitle = this.add.text(
+            255,
+            -155,
+            "Spend big money on instant combat boosts before you jump back in.",
+            {
+                font: "28px Arial",
+                fill: "#1b1b1b",
+                align: "center",
+                wordWrap: { width: 600 }
+            }
+        ).setOrigin(0.5);
+        this.pauseMoneyText = this.add.text(255, -88, "", {
+            font: "bold 38px Arial",
+            fill: "#1b1b1b"
+        }).setOrigin(0.5);
+        this.pauseShopStatusText = this.add.text(255, 262, "", {
+            font: "28px Arial",
+            fill: "#1b1b1b",
+            align: "center",
+            wordWrap: { width: 600 }
+        }).setOrigin(0.5);
+        pauseContainer.add([shopPanel, shopTitle, shopSubtitle, this.pauseMoneyText, this.pauseShopStatusText]);
+
+        this.pauseShopButtons = [];
+        const offerPositions = [
+            { x: 75, y: 20 },
+            { x: 435, y: 20 },
+            { x: 75, y: 165 },
+            { x: 435, y: 165 }
+        ];
+
+        PAUSE_POWERUP_SHOP_OFFERS.forEach((offer, index) => {
+            const position = offerPositions[index];
+            const card = this.add.container(position.x, position.y);
+            const cardBackground = this.add.rexRoundRectangle(0, 0, 300, 120, 22, 0xffffff, 1);
+            cardBackground.setStrokeStyle(5, offer.definition.color, 1);
+            const cardTitle = this.add.text(0, -28, offer.label, {
+                font: "bold 28px Arial",
+                fill: "#000000"
+            }).setOrigin(0.5);
+            const cardDescription = this.add.text(0, 10, offer.description, {
+                font: "20px Arial",
+                fill: "#1b1b1b",
+                align: "center",
+                wordWrap: { width: 248 }
+            }).setOrigin(0.5);
+            const actionButton = createTextButton(this, {
+                x: 0,
+                y: 95,
+                width: 240,
+                height: 64,
+                label: "",
+                backgroundColor: offer.definition.color,
+                textColor: offer.definition.textColor,
+                font: "bold 24px Arial",
+                parent: card
+            });
+
+            actionButton.background.on("pointerup", () => {
+                this.handlePausePowerupAction(offer);
+            });
+
+            card.add([cardBackground, cardTitle, cardDescription]);
+            pauseContainer.add(card);
+            this.pauseShopButtons.push({ offer, cardBackground, actionButton });
         });
 
         const escape = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -82,6 +165,8 @@ class PauseScene extends Menu {
             this.scene.start("MainMenu");
         });
 
+        this.refreshPauseShopState();
+
         this.tweens.add({
             targets: pauseContainer,
             y: 1080 / 2,
@@ -95,5 +180,35 @@ class PauseScene extends Menu {
     resumeLevel(): void {
         this.scene.stop();
         this.scene.resume(this.currentLevel);
+    }
+
+    getCurrentLevelScene(): LevelScene | undefined {
+        return this.scene.get(this.currentLevel) as LevelScene;
+    }
+
+    handlePausePowerupAction(offer: PausePowerupOffer): void {
+        const levelScene = this.getCurrentLevelScene();
+
+        if (!levelScene) {
+            this.pauseShopStatusText.setText("The level scene is unavailable right now.");
+            return;
+        }
+
+        const purchaseResult = levelScene.purchasePausePowerupOffer(offer);
+        this.playerProfile = levelScene.playerProfile ?? loadPlayerProfile();
+        this.pauseShopStatusText.setText(purchaseResult.message);
+        this.refreshPauseShopState();
+    }
+
+    refreshPauseShopState(): void {
+        this.pauseMoneyText.setText(`Money: $${this.playerProfile.currency}`);
+
+        this.pauseShopButtons.forEach((entry: { offer: PausePowerupOffer; cardBackground: any; actionButton: TextButton }) => {
+            const affordable = this.playerProfile.currency >= entry.offer.cost;
+            entry.cardBackground.setFillStyle(affordable ? 0xffffff : 0xf1e6e7, 1);
+            entry.cardBackground.setStrokeStyle(5, entry.offer.definition.color, affordable ? 1 : 0.55);
+            entry.actionButton.background.setFillStyle(entry.offer.definition.color, affordable ? 1 : 0.45);
+            entry.actionButton.label.setText(affordable ? `Buy $${entry.offer.cost}` : `Need $${entry.offer.cost}`);
+        });
     }
 }
