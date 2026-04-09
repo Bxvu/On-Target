@@ -127,6 +127,7 @@ function createWeaponDefinition(config: {
     description: string;
     cost: number;
     bowTint: number;
+    attackStyle?: WeaponAttackStyle;
     powerMultiplier: number;
     accentColor: number;
     placeholderLabel: string;
@@ -154,6 +155,7 @@ function createWeaponDefinition(config: {
         cost: config.cost,
         bowTexture: "bow",
         bowTint: config.bowTint,
+        attackStyle: config.attackStyle ?? "bow",
         projectile: createWeaponProjectile(config.projectile),
         powerMultiplier: config.powerMultiplier,
         accentColor: config.accentColor,
@@ -350,6 +352,7 @@ const ENEMY_ALTERNATE_PROJECTILES: ProjectileConfig[] = [
 
 const STANDARD_ENEMY_ARCHETYPE: EnemyArchetype = {
     id: "standard",
+    behavior: "ranged",
     projectile: ENEMY_ARROW_CONFIG,
     attack: {
         throwForceX: -0.025,
@@ -369,6 +372,7 @@ const STANDARD_ENEMY_ARCHETYPE: EnemyArchetype = {
 const LEVEL_FOUR_BOSS_ARCHETYPE: EnemyArchetype = {
     ...STANDARD_ENEMY_ARCHETYPE,
     id: "level-four-boss",
+    behavior: "ranged",
     projectile: createEnemyProjectile({
         id: "level-four-boss-shot",
         texture: "arrow",
@@ -411,6 +415,23 @@ const LEVEL_FOUR_BOSS_ARCHETYPE: EnemyArchetype = {
             }
         ]
     })
+};
+
+const GROUND_BRUISER_ARCHETYPE: EnemyArchetype = {
+    id: "ground-bruiser",
+    behavior: "melee",
+    melee: {
+        moveSpeed: 0.18,
+        preferredRange: 130,
+        attackRange: 175,
+        damage: 2,
+        windupMs: 450,
+        recoverMs: 800,
+        telegraphColor: 0xff7b00,
+        telegraphThickness: 5,
+        telegraphOuterStrength: 1
+    },
+    currencyReward: 20
 };
 
 
@@ -667,6 +688,7 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
         description: "Fires a blunt stone that slams into enemies with a round hitbox instead of pinning into them.",
         cost: 85,
         bowTint: 0x8d6e63,
+        attackStyle: "throw",
         powerMultiplier: 0.5,
         accentColor: 0x8d6e63,
         placeholderLabel: "Stone",
@@ -692,6 +714,7 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
         description: "Each solid rock hit patches you up, rewarding close chains of blunt impacts.",
         cost: 120,
         bowTint: 0x52b788,
+        attackStyle: "throw",
         powerMultiplier: 0.55,
         accentColor: 0x52b788,
         placeholderLabel: "Leech",
@@ -1001,7 +1024,7 @@ function createEnemySpawnConfig(config: Omit<EnemySpawnConfig, "archetype"> & { 
 }
 
 function resolveEnemyArchetype(archetype: EnemyArchetype): EnemyArchetype {
-    if (archetype.projectile.id !== ENEMY_ARROW_CONFIG.id) {
+    if (archetype.behavior !== "ranged" || !archetype.projectile || archetype.projectile.id !== ENEMY_ARROW_CONFIG.id) {
         return archetype;
     }
 
@@ -1138,7 +1161,7 @@ const MANUAL_LEVEL_DEFINITIONS: ManualLevelDefinition[] = [
         sceneKey: "LevelFour",
         label: "Level 4",
         menuColor: 0x6d9dc5,
-        nextLevel: "MainMenu",
+        nextLevel: "LevelFive",
         createEnemyConfigs: (levelScale) => {
             const enemyConfigs: EnemySpawnConfig[] = [
                 createEnemySpawnConfig({
@@ -1171,6 +1194,59 @@ const MANUAL_LEVEL_DEFINITIONS: ManualLevelDefinition[] = [
 
             return enemyConfigs;
         }
+    },
+    {
+        sceneKey: "LevelFive",
+        label: "Level 5",
+        menuColor: 0xf4a261,
+        nextLevel: "MainMenu",
+        instructions: {
+            x: 220,
+            y: 170,
+            text: "Ground bruisers rush you on the floor and swing in melee.\nThey are the priority target here.\nRock weapons now use a throw motion instead of the bow pose.",
+            font: "bold 34px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1550,
+                y: 900,
+                scale: levelScale + 0.15,
+                health: 8,
+                flip: true,
+                attackInterval: 0,
+                attackDelay: 0,
+                archetype: GROUND_BRUISER_ARCHETYPE
+            }),
+            createEnemySpawnConfig({
+                x: 1780,
+                y: 900,
+                scale: levelScale,
+                health: 6,
+                flip: true,
+                attackInterval: 0,
+                attackDelay: 0,
+                archetype: GROUND_BRUISER_ARCHETYPE
+            }),
+            createEnemySpawnConfig({
+                x: 1400,
+                y: 420,
+                scale: levelScale - 0.1,
+                health: 4,
+                flip: true,
+                attackInterval: 2400,
+                attackDelay: 1
+            }),
+            createEnemySpawnConfig({
+                x: 1150,
+                y: 540,
+                scale: levelScale - 0.2,
+                health: 3,
+                flip: true,
+                attackInterval: 2200,
+                attackDelay: 2
+            })
+        ]
     }
 ];
 

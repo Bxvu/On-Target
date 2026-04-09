@@ -2,7 +2,8 @@ type ManualLevelKey =
     | "LevelOne"
     | "LevelTwo"
     | "LevelThree"
-    | "LevelFour";
+    | "LevelFour"
+    | "LevelFive";
 
 type SceneKey =
     | "MainMenu"
@@ -27,6 +28,9 @@ type ShopItemCategory = "bow" | "arrow" | "utility";
 type EnemyArchetypeId = "standard";
 type EnemyStatusEffectKind = "bounty" | "burn" | "scatter" | "jam";
 type TimedPowerupKind = "rapidCharge" | "heal" | "damage" | "pierce";
+type WeaponAttackStyle = "bow" | "throw";
+type EnemyBehaviorKind = "ranged" | "melee";
+type CombatActionKind = "idle" | "charge" | "throw" | "walk" | "telegraph" | "meleeWindup" | "meleeRecover" | "dead";
 type RagdollPartMap = Record<BodyPartName, MatterBody>;
 type RagdollSpriteMap = Partial<Record<BodyPartName, LinkedSprite>>;
 
@@ -119,6 +123,12 @@ interface ActiveTimedPowerupState {
     remainingMs: number;
 }
 
+interface CombatActionState {
+    kind: CombatActionKind;
+    elapsedMs: number;
+    durationMs: number;
+}
+
 interface TimedPowerupPickup extends MatterImage {
     powerupDefinition: TimedPowerupDefinition;
     labelText?: GameText;
@@ -134,6 +144,7 @@ interface RagdollPerson {
     parts: RagdollPartMap;
     health: number;
     dead: boolean;
+    ignoresProjectileCollisions?: boolean;
     linkedSprites: LinkedSprite[];
     linkedSpritesByPart: RagdollSpriteMap;
     linkedArrows: MatterArrow[];
@@ -152,6 +163,10 @@ interface RagdollPerson {
     aimSpreadMultiplier?: number;
     throwForceMultiplier?: number;
     chargeRateMultiplier?: number;
+    behaviorKind?: EnemyBehaviorKind;
+    facingDirection?: number;
+    actionState?: CombatActionState;
+    meleeHitApplied?: boolean;
     archetype?: EnemyArchetype;
     loadout?: PlayerLoadout;
     spawnConfig?: EnemySpawnConfig;
@@ -238,10 +253,24 @@ interface EnemyAttackTuning {
     telegraphOuterStrength: number;
 }
 
+interface EnemyMeleeTuning {
+    moveSpeed: number;
+    preferredRange: number;
+    attackRange: number;
+    damage: number;
+    windupMs: number;
+    recoverMs: number;
+    telegraphColor: number;
+    telegraphThickness: number;
+    telegraphOuterStrength: number;
+}
+
 interface EnemyArchetype {
     id: EnemyArchetypeId | string;
-    projectile: ProjectileConfig;
-    attack: EnemyAttackTuning;
+    behavior: EnemyBehaviorKind;
+    projectile?: ProjectileConfig;
+    attack?: EnemyAttackTuning;
+    melee?: EnemyMeleeTuning;
     currencyReward: number;
 }
 
@@ -287,6 +316,7 @@ interface WeaponDefinition {
     cost: number;
     bowTexture: string;
     bowTint: number;
+    attackStyle: WeaponAttackStyle;
     projectile: ProjectileConfig;
     powerMultiplier: number;
     accentColor: number;

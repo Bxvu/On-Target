@@ -29,6 +29,23 @@ const HUD_STYLES = {
 
 const ENEMY_STATUS_ORDER: EnemyStatusEffectKind[] = ["bounty", "burn", "scatter", "jam"];
 const PLAYER_SHOT_SCATTER_PIXELS = 120;
+const PLAYER_THROW_ANIMATION_MS = 220;
+const PLAYER_THROW_ARM_FORCE = 0.014;
+const PLAYER_THROW_WINDUP_FORCE = 0.0018;
+const PLAYER_THROW_RELEASE_FORCE = 0.006;
+const PLAYER_THROW_FOREARM_RELEASE_FORCE = 0.009;
+const PLAYER_THROW_IDLE_POSE_FORCE = 0.0012;
+const PLAYER_THROW_IDLE_OFFSET_X = 34;
+const PLAYER_THROW_IDLE_OFFSET_Y = 22;
+const PLAYER_THROW_WINDUP_OFFSET_X = 68;
+const PLAYER_THROW_WINDUP_OFFSET_Y = 72;
+const PLAYER_THROW_RELEASE_OFFSET_X = 92;
+const PLAYER_THROW_RELEASE_OFFSET_Y = 10;
+const PLAYER_THROW_ANCHOR_DISTANCE = 56;
+const MELEE_ATTACK_ARM_FORCE = 0.05;
+const MELEE_WINDUP_FORCE = 0.0013;
+const MELEE_RECOVER_FORCE = 0.0019;
+const PROJECTILE_COLLISION_CATEGORY = 0x0002;
 const TIMED_POWERUP_PICKUP_SCALE = 0.32;
 const TIMED_POWERUP_PICKUP_LIFETIME_MS = 9000;
 const TIMED_POWERUP_DROP_LIFETIME_MS = 6500;
@@ -179,9 +196,11 @@ class LevelScene extends LooseScene {
 
     createPlayerRig(): void {
         const playerItems = this.createPlayer(PLAYER_SPAWN.x, PLAYER_SPAWN.y, Math.abs(this.levelScale), PLAYER_MAX_HEALTH);
+        const attackStyle = this.playerLoadout.weapon.attackStyle;
 
         this.bow = playerItems.playerContainer;
         this.bowSprite = playerItems.bowSprite;
+        this.playerAimSprite = playerItems.aimArrow;
         this.player = playerItems.player;
         this.player.loadout = this.playerLoadout;
         this.player.healthDisplay = this.add.text(PLAYER_SPAWN.x, PLAYER_SPAWN.y - 100, `Health: ${PLAYER_MAX_HEALTH}`, HUD_STYLES.playerHealth);
@@ -190,17 +209,25 @@ class LevelScene extends LooseScene {
         this.refreshPlayerStatusModifiers();
         this.refreshPlayerStatusDisplay();
 
-        this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
-            pointA: { x: 0, y: 0 },
-            pointB: { x: 0, y: 0 },
-            render: { visible: false }
-        });
+        if (attackStyle === "bow") {
+            this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
+                pointA: { x: 0, y: 0 },
+                pointB: { x: 0, y: 0 },
+                render: { visible: false }
+            });
 
-        this.leftArmBowConstraint = this.matter.add.constraint(this.player.parts.leftLowerArm, this.bowSprite.body, 0, 0.001, {
-            pointA: { x: 0, y: 0 },
-            pointB: { x: 0, y: 0 },
-            render: { visible: false }
-        });
+            this.leftArmBowConstraint = this.matter.add.constraint(this.player.parts.leftLowerArm, this.bowSprite.body, 0, 0.001, {
+                pointA: { x: 0, y: 0 },
+                pointB: { x: 0, y: 0 },
+                render: { visible: false }
+            });
+        }
+        else {
+            this.rightArmBowConstraint = undefined;
+            this.leftArmBowConstraint = undefined;
+        }
+
+        this.syncPlayerAttackAnchor();
     }
 
     detachBowConstraints(): void {
@@ -521,14 +548,14 @@ class LevelScene extends LooseScene {
         this.updatePointerTracking();
         this.updateChargeDisplayPosition();
         this.handlePlayerCharge();
-        this.updateBowAim();
-        this.syncRagdollSprites();
+        this.updateBowAim(delta);
 
         const humanoidsDefeated = this.checkCombatCollisions();
         this.updateHumanoidAI(delta);
         this.updatePlayerStatusEffects(delta);
         this.updateTimedPowerups(delta);
         this.updatePlayerOverheal(delta);
+        this.syncRagdollSprites();
         this.updatePlayerHealthDisplay();
         this.handlePlayerDefeat();
         this.handleWaveVictory(humanoidsDefeated);
@@ -558,9 +585,13 @@ class LevelScene extends LooseScene {
         const pointer = this.input.activePointer;
         const scaleMagnitude = Math.abs(this.levelScale) || 1;
         const chargeRateMultiplier = this.player?.chargeRateMultiplier ?? 1;
+        const attackStyle = this.playerLoadout.weapon.attackStyle;
 
         if (pointer.isDown && this.canCharge) {
             if (this.bowStream) {
+                if (attackStyle === "throw") {
+                    this.setCombatAction(this.player, "throw", PLAYER_THROW_ANIMATION_MS);
+                }
                 this.firePlayerArrow(100 + 10 / scaleMagnitude);
                 this.chargeTime = 0;
             }
@@ -574,14 +605,25 @@ class LevelScene extends LooseScene {
                 this.chargeTime = Math.min(this.chargeTime, 100);
             }
 
+            if (attackStyle === "throw") {
+                this.setCombatAction(this.player, "charge");
+            }
             this.chargeDisplay.setText(`Charge: ${this.chargeTime.toFixed(1)}`);
             return;
         }
 
         if (this.chargeTime > 0) {
+            if (attackStyle === "throw") {
+                this.setCombatAction(this.player, "throw", PLAYER_THROW_ANIMATION_MS);
+            }
             this.firePlayerArrow(this.chargeTime + 10 / scaleMagnitude);
             this.chargeTime = 0;
             this.chargeDisplay.setText("Charge: 0");
+            return;
+        }
+
+        if (attackStyle === "throw" && this.player.actionState?.kind === "charge") {
+            this.setCombatAction(this.player, "idle");
         }
     }
 
@@ -591,7 +633,14 @@ class LevelScene extends LooseScene {
         const scatterRadius = Math.max(0, (aimSpreadMultiplier - 1) * PLAYER_SHOT_SCATTER_PIXELS);
         const targetX = this.mousex + (Math.random() * scatterRadius * 2 - scatterRadius);
         const targetY = this.mousey + (Math.random() * scatterRadius * 2 - scatterRadius);
+        const projectileAnchor = this.getPlayerProjectileAnchor(targetX, targetY);
 
+        if (this.playerLoadout.weapon.attackStyle === "throw") {
+            const throwForceScale = Phaser.Math.Clamp(power / 100, 0.35, 1.25);
+            this.applyDirectionalAttackForce(this.player.parts.rightLowerArm, targetX, targetY, PLAYER_THROW_ARM_FORCE * throwForceScale);
+        }
+
+        this.syncPlayerAttackAnchor(projectileAnchor.x, projectileAnchor.y);
         this.shootArrow(
             power * this.playerLoadout.powerMultiplier * throwForceMultiplier,
             this.levelScale,
@@ -604,7 +653,24 @@ class LevelScene extends LooseScene {
         this.arrowsShot += 1;
     }
 
-    updateBowAim(): void {
+    updateBowAim(delta: number): void {
+        const playerActionComplete = this.advanceCombatAction(this.player, delta);
+        const chestPosition = this.player.parts.chest.position;
+        const aimAngle = Phaser.Math.Angle.Between(chestPosition.x, chestPosition.y, this.mousex, this.mousey);
+        const attackStyle = this.playerLoadout.weapon.attackStyle;
+        const projectileAnchor = this.getPlayerProjectileAnchor(this.mousex, this.mousey);
+
+        if (playerActionComplete && this.player.actionState?.kind === "throw") {
+            this.setCombatAction(this.player, "idle");
+        }
+
+        this.syncPlayerAttackAnchor(projectileAnchor.x, projectileAnchor.y);
+
+        if (attackStyle === "throw") {
+            this.updateThrownWeaponPose(aimAngle);
+            return;
+        }
+
         if (this.rightArmBowConstraint) {
             this.rightArmBowConstraint.pointB.x = this.mousex;
             this.rightArmBowConstraint.pointB.y = this.mousey;
@@ -615,8 +681,139 @@ class LevelScene extends LooseScene {
             this.leftArmBowConstraint.pointB.y = this.mousey + 500;
         }
 
-        const angle = Phaser.Math.Angle.Between(this.bow.x, this.bow.y, this.mousex, this.mousey);
-        this.bow.rotation = angle;
+        this.bow.rotation = Phaser.Math.Angle.Between(this.bow.x, this.bow.y, this.mousex, this.mousey);
+
+        if (this.bowSprite) {
+            this.bowSprite.setAlpha(1);
+        }
+
+        if (this.playerAimSprite) {
+            this.playerAimSprite.setAlpha(0.75);
+            this.playerAimSprite.setVisible(true);
+        }
+    }
+
+    getPlayerProjectileAnchor(targetX: number, targetY: number): { x: number; y: number } {
+        const chest = this.player.parts.chest.position;
+        const aimAngle = Phaser.Math.Angle.Between(chest.x, chest.y, targetX, targetY);
+
+        return {
+            x: chest.x + Math.cos(aimAngle) * PLAYER_THROW_ANCHOR_DISTANCE,
+            y: chest.y + Math.sin(aimAngle) * PLAYER_THROW_ANCHOR_DISTANCE
+        };
+    }
+
+    syncPlayerAttackAnchor(anchorX?: number, anchorY?: number): void {
+        if (!this.bow || !this.player) {
+            return;
+        }
+
+        const rightHand = this.player.parts.rightLowerArm.position;
+        const leftHand = this.player.parts.leftLowerArm.position;
+        const attackStyle = this.playerLoadout.weapon.attackStyle;
+        const resolvedAnchorX = attackStyle === "throw"
+            ? (anchorX ?? this.bow.x)
+            : (rightHand.x + leftHand.x) / 2;
+        const resolvedAnchorY = attackStyle === "throw"
+            ? (anchorY ?? this.bow.y)
+            : (rightHand.y + leftHand.y) / 2;
+
+        this.bow.x = resolvedAnchorX;
+        this.bow.y = resolvedAnchorY;
+    }
+
+    updateThrownWeaponPose(aimAngle: number): void {
+        const actionKind = this.player.actionState?.kind ?? "idle";
+        const chest = this.player.parts.chest.position;
+        const aimDirectionX = Math.cos(aimAngle);
+        const aimDirectionY = Math.sin(aimAngle);
+        const perpendicularX = Math.cos(aimAngle - Math.PI / 2);
+        const perpendicularY = Math.sin(aimAngle - Math.PI / 2);
+
+        let rightPoseX = chest.x + aimDirectionX * PLAYER_THROW_IDLE_OFFSET_X + perpendicularX * PLAYER_THROW_IDLE_OFFSET_Y;
+        let rightPoseY = chest.y + aimDirectionY * PLAYER_THROW_IDLE_OFFSET_X + perpendicularY * PLAYER_THROW_IDLE_OFFSET_Y;
+        let leftPoseX = chest.x - aimDirectionX * 18 - perpendicularX * 38;
+        let leftPoseY = chest.y - aimDirectionY * 18 - perpendicularY * 26;
+
+        if (actionKind === "charge") {
+            rightPoseX = chest.x - aimDirectionX * PLAYER_THROW_WINDUP_OFFSET_X + perpendicularX * PLAYER_THROW_WINDUP_OFFSET_Y;
+            rightPoseY = chest.y - aimDirectionY * PLAYER_THROW_WINDUP_OFFSET_X + perpendicularY * PLAYER_THROW_WINDUP_OFFSET_Y;
+            leftPoseX = chest.x - aimDirectionX * 8 - perpendicularX * 44;
+            leftPoseY = chest.y - aimDirectionY * 8 - perpendicularY * 20;
+            this.applyPoseForce(this.player.parts.rightLowerArm, rightPoseX, rightPoseY, PLAYER_THROW_WINDUP_FORCE);
+            this.applyPoseForce(this.player.parts.leftLowerArm, leftPoseX, leftPoseY, PLAYER_THROW_WINDUP_FORCE * 0.75);
+        }
+        else if (actionKind === "throw") {
+            rightPoseX = chest.x + aimDirectionX * PLAYER_THROW_RELEASE_OFFSET_X + perpendicularX * PLAYER_THROW_RELEASE_OFFSET_Y;
+            rightPoseY = chest.y + aimDirectionY * PLAYER_THROW_RELEASE_OFFSET_X + perpendicularY * PLAYER_THROW_RELEASE_OFFSET_Y;
+            leftPoseX = chest.x - aimDirectionX * 16 - perpendicularX * 32;
+            leftPoseY = chest.y - aimDirectionY * 16 - perpendicularY * 16;
+            this.applyPoseForce(this.player.parts.rightLowerArm, rightPoseX, rightPoseY, PLAYER_THROW_RELEASE_FORCE);
+            this.applyPoseForce(
+                this.player.parts.rightLowerArm,
+                chest.x + aimDirectionX * (PLAYER_THROW_RELEASE_OFFSET_X + 34),
+                chest.y + aimDirectionY * (PLAYER_THROW_RELEASE_OFFSET_X + 34),
+                PLAYER_THROW_FOREARM_RELEASE_FORCE
+            );
+            this.applyPoseForce(this.player.parts.leftLowerArm, leftPoseX, leftPoseY, PLAYER_THROW_RELEASE_FORCE * 0.45);
+        }
+        else {
+            this.applyPoseForce(this.player.parts.rightLowerArm, rightPoseX, rightPoseY, PLAYER_THROW_IDLE_POSE_FORCE);
+            this.applyPoseForce(this.player.parts.leftLowerArm, leftPoseX, leftPoseY, PLAYER_THROW_IDLE_POSE_FORCE * 0.8);
+        }
+
+        this.bow.rotation = aimAngle;
+
+        if (this.bowSprite) {
+            this.bowSprite.setAlpha(1);
+        }
+
+        if (this.playerAimSprite) {
+            this.playerAimSprite.setVisible(false);
+            this.playerAimSprite.setAlpha(0);
+        }
+    }
+
+    setConstraintTarget(constraint: MatterConstraint | undefined, x: number, y: number): void {
+        if (!constraint) {
+            return;
+        }
+
+        constraint.pointB.x = x;
+        constraint.pointB.y = y;
+    }
+
+    setCombatAction(person: RagdollPerson, kind: CombatActionKind, durationMs = 0): void {
+        if (person.actionState?.kind === kind && person.actionState.durationMs === durationMs) {
+            return;
+        }
+
+        person.actionState = {
+            kind,
+            elapsedMs: 0,
+            durationMs
+        };
+
+        if (kind === "meleeWindup") {
+            person.meleeHitApplied = false;
+        }
+    }
+
+    advanceCombatAction(person: RagdollPerson, delta: number): boolean {
+        if (!person.actionState || person.actionState.durationMs <= 0) {
+            return false;
+        }
+
+        person.actionState.elapsedMs = Math.min(person.actionState.durationMs, person.actionState.elapsedMs + delta);
+        return person.actionState.elapsedMs >= person.actionState.durationMs;
+    }
+
+    getCombatActionProgress(person: RagdollPerson): number {
+        if (!person.actionState || person.actionState.durationMs <= 0) {
+            return 0;
+        }
+
+        return Phaser.Math.Clamp(person.actionState.elapsedMs / person.actionState.durationMs, 0, 1);
     }
 
     syncRagdollSprites(): void {
@@ -651,34 +848,230 @@ class LevelScene extends LooseScene {
                     return;
                 }
 
-                humanoid.healthDisplay!.x = humanoid.parts.head.position.x;
-                humanoid.healthDisplay!.y = humanoid.parts.head.position.y;
-                humanoid.healthDisplay!.setText(`${humanoid.health}`);
-                humanoid.statusDisplay!.x = humanoid.parts.head.position.x;
-                humanoid.statusDisplay!.y = humanoid.parts.head.position.y - 34;
-                humanoid.timer! += delta;
-
-                if (humanoid.timer! >= humanoid.attackInterval!) {
-                    humanoid.timer! -= humanoid.attackInterval!;
-
-                    if (humanoid.currentDelay! <= humanoid.delayAttack!) {
-                        humanoid.currentDelay! += 1;
-                    }
-                    else {
-                        this.humanoidAttack(humanoid, this.levelScale, this.rollAttackPower(humanoid), this.player);
-                    }
-
-                    if (humanoid.currentDelay! >= humanoid.delayAttack! && !humanoid.triggered) {
-                        humanoid.triggered = true;
-                        humanoid.attackTelegraphSprite!.preFX.addGlow(
-                            humanoid.archetype!.attack.telegraphColor,
-                            humanoid.archetype!.attack.telegraphThickness,
-                            humanoid.archetype!.attack.telegraphOuterStrength
-                        );
-                    }
-                }
+                this.updateHumanoidUi(humanoid);
+                this.updateHumanoidBehavior(humanoid, delta);
             }
         });
+    }
+
+    updateHumanoidUi(humanoid: RagdollPerson): void {
+        humanoid.healthDisplay!.x = humanoid.parts.head.position.x;
+        humanoid.healthDisplay!.y = humanoid.parts.head.position.y;
+        humanoid.healthDisplay!.setText(`${humanoid.health}`);
+        humanoid.statusDisplay!.x = humanoid.parts.head.position.x;
+        humanoid.statusDisplay!.y = humanoid.parts.head.position.y - 34;
+    }
+
+    updateHumanoidBehavior(humanoid: RagdollPerson, delta: number): void {
+        const actionComplete = this.advanceCombatAction(humanoid, delta);
+
+        if (humanoid.behaviorKind === "melee") {
+            this.updateMeleeHumanoidAI(humanoid, delta, actionComplete);
+        }
+        else {
+            this.updateRangedHumanoidAI(humanoid, delta, actionComplete);
+        }
+
+        this.updateHumanoidVisualState(humanoid);
+    }
+
+    updateRangedHumanoidAI(humanoid: RagdollPerson, delta: number, actionComplete: boolean): void {
+        const attackConfig = humanoid.archetype?.attack;
+
+        if (!attackConfig) {
+            return;
+        }
+
+        if (actionComplete && (humanoid.actionState?.kind === "telegraph" || humanoid.actionState?.kind === "throw")) {
+            this.setCombatAction(humanoid, "idle");
+        }
+
+        humanoid.timer! += delta;
+
+        if (humanoid.currentDelay! < humanoid.delayAttack!) {
+            if (humanoid.timer! >= humanoid.attackInterval!) {
+                humanoid.timer! -= humanoid.attackInterval!;
+                humanoid.currentDelay! += 1;
+            }
+
+            return;
+        }
+
+        const telegraphWindowMs = Math.min(450, humanoid.attackInterval! * 0.35);
+
+        if (
+            humanoid.timer! >= humanoid.attackInterval! - telegraphWindowMs
+            && humanoid.timer! < humanoid.attackInterval!
+            && humanoid.actionState?.kind !== "telegraph"
+        ) {
+            this.setCombatAction(humanoid, "telegraph", telegraphWindowMs);
+        }
+
+        if (humanoid.timer! < humanoid.attackInterval!) {
+            return;
+        }
+
+        humanoid.timer! -= humanoid.attackInterval!;
+        this.setCombatAction(humanoid, "throw", 180);
+        this.humanoidAttack(humanoid, this.levelScale, this.rollAttackPower(humanoid), this.player);
+    }
+
+    updateMeleeHumanoidAI(humanoid: RagdollPerson, delta: number, actionComplete: boolean): void {
+        const meleeConfig = humanoid.archetype?.melee;
+
+        if (!meleeConfig) {
+            return;
+        }
+
+        const playerChest = this.player.parts.chest.position;
+        const chest = humanoid.parts.chest.position;
+        const distanceX = playerChest.x - chest.x;
+        const facingDirection = distanceX >= 0 ? 1 : -1;
+        const distanceToPlayer = Math.abs(distanceX);
+
+        humanoid.facingDirection = facingDirection;
+
+        if (humanoid.actionState?.kind === "meleeWindup") {
+            this.applyDirectionalAttackForce(
+                humanoid.throwingArm,
+                chest.x - (facingDirection * 160),
+                chest.y - 120,
+                MELEE_WINDUP_FORCE
+            );
+
+            if (!humanoid.meleeHitApplied && this.getCombatActionProgress(humanoid) >= 0.65) {
+                humanoid.meleeHitApplied = true;
+                this.applyDirectionalAttackForce(
+                    humanoid.throwingArm,
+                    playerChest.x,
+                    playerChest.y,
+                    MELEE_ATTACK_ARM_FORCE * 0.8
+                );
+
+                if (distanceToPlayer <= meleeConfig.attackRange) {
+                    this.applyDirectDamage(this.player, meleeConfig.damage, 0xff7b00);
+                }
+            }
+
+            if (actionComplete) {
+                this.setCombatAction(humanoid, "meleeRecover", meleeConfig.recoverMs);
+            }
+
+            return;
+        }
+
+        if (humanoid.actionState?.kind === "meleeRecover") {
+            this.applyDirectionalAttackForce(
+                humanoid.throwingArm,
+                playerChest.x,
+                playerChest.y,
+                MELEE_RECOVER_FORCE
+            );
+
+            if (actionComplete) {
+                this.setCombatAction(humanoid, "idle");
+            }
+
+            return;
+        }
+
+        if (distanceToPlayer <= meleeConfig.attackRange) {
+            this.applyDirectionalAttackForce(
+                humanoid.throwingArm,
+                playerChest.x,
+                playerChest.y,
+                MELEE_ATTACK_ARM_FORCE
+            );
+            this.setCombatAction(humanoid, "meleeWindup", meleeConfig.windupMs);
+            return;
+        }
+
+        if (distanceToPlayer > meleeConfig.preferredRange) {
+            this.setCombatAction(humanoid, "walk");
+            this.moveHumanoid(humanoid, facingDirection * meleeConfig.moveSpeed * delta, 0);
+            return;
+        }
+
+        this.setCombatAction(humanoid, "idle");
+    }
+
+    updateHumanoidVisualState(humanoid: RagdollPerson): void {
+        const actionKind = humanoid.actionState?.kind ?? "idle";
+        const telegraphSprite = humanoid.attackTelegraphSprite;
+
+        if (telegraphSprite) {
+            if (actionKind === "telegraph" || actionKind === "meleeWindup") {
+                const telegraphColor = humanoid.behaviorKind === "melee"
+                    ? humanoid.archetype?.melee?.telegraphColor
+                    : humanoid.archetype?.attack?.telegraphColor;
+                telegraphSprite.setTint(telegraphColor ?? 0xffa500);
+            }
+            else {
+                telegraphSprite.clearTint();
+            }
+        }
+
+        if (humanoid.behaviorKind !== "melee") {
+            return;
+        }
+
+        const walkCycle = this.sys.game.loop.time * 0.015;
+        const swingDirection = humanoid.facingDirection ?? -1;
+
+        if (actionKind === "walk") {
+            this.applyForceToBody(humanoid.parts.leftLowerLeg, Math.sin(walkCycle) * 0.00008 * swingDirection, 0);
+            this.applyForceToBody(humanoid.parts.rightLowerLeg, -Math.sin(walkCycle) * 0.00008 * swingDirection, 0);
+            this.applyForceToBody(humanoid.parts.leftLowerArm, -Math.cos(walkCycle) * 0.00006 * swingDirection, -0.00002);
+            this.applyForceToBody(humanoid.parts.rightLowerArm, Math.cos(walkCycle) * 0.00004 * swingDirection, -0.00002);
+        }
+        else if (actionKind === "meleeWindup") {
+            this.applyForceToBody(humanoid.parts.leftLowerArm, 0.00012 * swingDirection, -0.00004);
+            this.applyForceToBody(humanoid.parts.chest, -0.00005 * swingDirection, -0.00002);
+        }
+        else if (actionKind === "meleeRecover") {
+            this.applyForceToBody(humanoid.parts.chest, 0.00009 * swingDirection, 0);
+        }
+    }
+
+    moveHumanoid(humanoid: RagdollPerson, deltaX: number, deltaY: number): void {
+        if (deltaX === 0 && deltaY === 0) {
+            return;
+        }
+
+        humanoid.bodies.forEach((bodyPart) => {
+            Phaser.Physics.Matter.Matter.Body.translate(bodyPart, { x: deltaX, y: deltaY });
+        });
+    }
+
+    applyForceToBody(body: MatterBody, x: number, y: number): void {
+        Phaser.Physics.Matter.Matter.Body.applyForce(body, body.position, { x, y });
+    }
+
+    applyPoseForce(body: MatterBody, targetX: number, targetY: number, magnitude: number): void {
+        const deltaX = targetX - body.position.x;
+        const deltaY = targetY - body.position.y;
+        const distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+
+        if (distance < 1) {
+            return;
+        }
+
+        const scaledMagnitude = magnitude * Phaser.Math.Clamp(distance / 80, 0.2, 1.3);
+        this.applyForceToBody(
+            body,
+            (deltaX / distance) * scaledMagnitude,
+            (deltaY / distance) * scaledMagnitude
+        );
+    }
+
+    applyDirectionalAttackForce(body: MatterBody, targetX: number, targetY: number, magnitude: number): void {
+        const angle = Phaser.Math.Angle.Between(body.position.x, body.position.y, targetX, targetY);
+
+        this.applyForceToBody(
+            body,
+            Math.cos(angle) * magnitude,
+            Math.sin(angle) * magnitude
+        );
     }
 
     updateHumanoidStatusEffects(humanoid: RagdollPerson, delta: number): void {
@@ -1027,7 +1420,12 @@ class LevelScene extends LooseScene {
     }
 
     rollAttackPower(humanoid: RagdollPerson): number {
-        const attackConfig = humanoid.archetype!.attack;
+        const attackConfig = humanoid.archetype?.attack;
+
+        if (!attackConfig) {
+            return 0;
+        }
+
         return (Math.random() * (attackConfig.powerMax - attackConfig.powerMin)) + attackConfig.powerMin;
     }
 
@@ -1184,6 +1582,7 @@ class LevelScene extends LooseScene {
         }));
 
         enemy.archetype = resolvedArchetype;
+        enemy.behaviorKind = resolvedArchetype.behavior;
         enemy.spawnConfig = {
             ...config,
             archetype: resolvedArchetype
@@ -1197,7 +1596,13 @@ class LevelScene extends LooseScene {
 
     humanoidAttack(humanoid: RagdollPerson, scale: number, power: number, player: RagdollPerson): void {
         const spawnpoint = humanoid.throwingArm;
-        const attackConfig = humanoid.archetype!.attack;
+        const attackConfig = humanoid.archetype?.attack;
+        const projectileConfig = humanoid.archetype?.projectile;
+
+        if (!attackConfig || !projectileConfig) {
+            return;
+        }
+
         const aimSpreadMultiplier = humanoid.aimSpreadMultiplier ?? 1;
         const throwForceMultiplier = humanoid.throwForceMultiplier ?? 1;
         const aimSpreadX = attackConfig.aimSpreadX * aimSpreadMultiplier;
@@ -1226,7 +1631,7 @@ class LevelScene extends LooseScene {
             velocityX,
             velocityY,
             resolvedScale,
-            humanoid.archetype!.projectile
+            projectileConfig
         );
 
         newArrow.sourceCombatId = humanoid.combatId;
@@ -1266,6 +1671,7 @@ class LevelScene extends LooseScene {
         arrow.rotation = angle;
         arrow.alreadyHit = false;
         arrow.projectileConfig = projectileConfig;
+        arrow.body.collisionFilter.category = PROJECTILE_COLLISION_CATEGORY;
         arrow.body.collisionFilter.group = projectileConfig.collisionGroup;
         arrow.body.isSensor = (projectileConfig.pierceCount ?? 0) > 0;
         arrow.hitTargetIds = [];
@@ -1343,6 +1749,7 @@ class LevelScene extends LooseScene {
     }
 
     createPlayer(x: number, y: number, scale: number, health: number): { player: RagdollPerson; playerContainer: GameContainer; bowSprite: MatterImage; aimArrow: MatterImage } {
+        const attackStyle = this.playerLoadout.weapon.attackStyle;
         const aimArrow = this.createStaticWeaponSprite(
             this.playerLoadout.projectile.texture,
             scale,
@@ -1350,12 +1757,18 @@ class LevelScene extends LooseScene {
             this.playerLoadout.projectile.scale
         );
         const bowSprite = this.createStaticWeaponSprite(
-            this.playerLoadout.weapon.bowTexture,
+            attackStyle === "throw" ? this.playerLoadout.projectile.texture : this.playerLoadout.weapon.bowTexture,
             scale,
-            this.playerLoadout.weapon.bowTint
+            attackStyle === "throw" ? this.playerLoadout.projectile.tint : this.playerLoadout.weapon.bowTint,
+            attackStyle === "throw" ? this.playerLoadout.projectile.scale * 1.35 : 0.2
         );
         const player = this.constructPlayer(x, y, scale, false, health, false);
         const playerContainer = this.add.container(x, y);
+
+        if (attackStyle === "throw") {
+            aimArrow.setVisible(false);
+            aimArrow.setAlpha(0);
+        }
 
         playerContainer.add([bowSprite, aimArrow]);
         return { player, playerContainer, bowSprite, aimArrow };
@@ -1374,6 +1787,10 @@ class LevelScene extends LooseScene {
     }
 
     checkArrowCollisions(arrowList: ArrowCollection, person: RagdollPerson): void {
+        if (person.ignoresProjectileCollisions) {
+            return;
+        }
+
         arrowList.slice().forEach((arrow) => {
             if (!arrow || !arrow.body || !arrow.active) {
                 return;
@@ -1480,6 +1897,28 @@ class LevelScene extends LooseScene {
         person.linkedArrows.push(arrow);
         arrow.body.collisionFilter.group = part.collisionFilter.group;
         arrow.alreadyHit = true;
+    }
+
+    applyDirectDamage(person: RagdollPerson, damage: number, flashTint = 0xff0000): void {
+        if (damage <= 0 || person.health <= 0) {
+            return;
+        }
+
+        person.linkedSprites.forEach((sprite) => {
+            sprite.setTint(flashTint);
+        });
+
+        person.health -= damage;
+
+        this.time.delayedCall(180, () => {
+            person.linkedSprites.forEach((sprite) => {
+                sprite.clearTint();
+            });
+        });
+
+        if (person.health <= 0) {
+            this.handlePersonDeath(person);
+        }
     }
 
     healPlayer(amount: number, x: number, y: number): void {
@@ -1595,6 +2034,7 @@ class LevelScene extends LooseScene {
         }
 
         person.dead = true;
+        this.setCombatAction(person, "dead");
 
         if (person !== this.player) {
             this.kills += 1;
@@ -1626,6 +2066,10 @@ class LevelScene extends LooseScene {
             person.statusDisplay.setText("");
         }
 
+        if (person.attackTelegraphSprite) {
+            person.attackTelegraphSprite.clearTint();
+        }
+
         person.activeStatusEffects = {};
 
         person.bodies.forEach((bodyPart) => {
@@ -1643,6 +2087,10 @@ class LevelScene extends LooseScene {
                 bodyPart.collisionFilter.group = -1;
             });
 
+            if (person !== this.player) {
+                this.disableProjectileCollisionsForSplitCorpse(person);
+            }
+
             person.linkedArrows.forEach((linkedArrow) => {
                 if (linkedArrow.body) {
                     linkedArrow.body.collisionFilter.group = -1;
@@ -1657,6 +2105,14 @@ class LevelScene extends LooseScene {
                 ease: "Cubic.easeOut",
                 repeat: 0
             });
+        });
+    }
+
+    disableProjectileCollisionsForSplitCorpse(person: RagdollPerson): void {
+        person.ignoresProjectileCollisions = true;
+
+        person.bodies.forEach((bodyPart) => {
+            bodyPart.collisionFilter.mask &= ~PROJECTILE_COLLISION_CATEGORY;
         });
     }
 

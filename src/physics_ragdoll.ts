@@ -119,6 +119,14 @@ class HumanoidFactory {
         person.aimSpreadMultiplier = 1;
         person.throwForceMultiplier = 1;
         person.chargeRateMultiplier = 1;
+        person.behaviorKind = "ranged";
+        person.facingDirection = flip ? -1 : 1;
+        person.actionState = {
+            kind: "idle",
+            elapsedMs: 0,
+            durationMs: 0
+        };
+        person.meleeHitApplied = false;
 
         if (showHealthDisplay) {
             person.attackInterval = attackInterval;
