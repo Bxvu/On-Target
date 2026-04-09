@@ -725,7 +725,7 @@ class ShopMenu extends Menu {
         (weapon.projectile.statusEffects ?? []).forEach((effect: EnemyStatusEffectConfig) => {
             switch (effect.kind) {
             case "bounty":
-                lines.push(`Bounty: +${formatModifierPercent(effect.rewardMultiplierPerStack)} per stack`);
+                lines.push(`Bounty: +${formatModifierPercent(effect.rewardMultiplierPerStack ?? 0)} per stack`);
                 break;
             case "burn":
                 lines.push(`Burn: ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`);

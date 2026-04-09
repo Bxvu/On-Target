@@ -22,11 +22,13 @@ const WORLD_BOUNDS = {
 const HUD_STYLES = {
     charge: { font: "20px Arial", fill: "#ffff00" },
     playerHealth: { font: "20px Arial", fill: "#ff1010" },
+    playerStatus: { font: "18px Arial", fill: "#1b1b1b" },
     currency: { font: "32px Arial", fill: "#1b1b1b" },
     weapon: { font: "24px Arial", fill: "#1b1b1b" }
 };
 
 const ENEMY_STATUS_ORDER: EnemyStatusEffectKind[] = ["bounty", "burn", "scatter", "jam"];
+const PLAYER_SHOT_SCATTER_PIXELS = 120;
 
 class LevelScene extends LooseScene {
     init(data: LevelInitData = {}): void {
@@ -189,6 +191,9 @@ class LevelScene extends LooseScene {
         this.player.loadout = this.playerLoadout;
         this.player.healthDisplay = this.add.text(PLAYER_SPAWN.x, PLAYER_SPAWN.y - 100, `Health: ${PLAYER_MAX_HEALTH}`, HUD_STYLES.playerHealth);
         this.player.healthDisplay.setOrigin(0.5, 0.5);
+        this.player.statusDisplay = this.add.text(PLAYER_SPAWN.x, PLAYER_SPAWN.y - 132, "", HUD_STYLES.playerStatus).setOrigin(0.5, 0.5);
+        this.refreshPlayerStatusModifiers();
+        this.refreshPlayerStatusDisplay();
 
         this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
             pointA: { x: 0, y: 0 },
@@ -231,6 +236,7 @@ class LevelScene extends LooseScene {
 
         const humanoidsDefeated = this.checkCombatCollisions();
         this.updateHumanoidAI(delta);
+        this.updatePlayerStatusEffects(delta);
         this.updatePlayerOverheal(delta);
         this.updatePlayerHealthDisplay();
         this.handlePlayerDefeat();
@@ -260,6 +266,7 @@ class LevelScene extends LooseScene {
     handlePlayerCharge(): void {
         const pointer = this.input.activePointer;
         const scaleMagnitude = Math.abs(this.levelScale) || 1;
+        const chargeRateMultiplier = this.player?.chargeRateMultiplier ?? 1;
 
         if (pointer.isDown && this.canCharge) {
             if (this.bowStream) {
@@ -270,7 +277,9 @@ class LevelScene extends LooseScene {
                 this.chargeTime = 100;
             }
             else if (this.chargeTime < 100) {
-                this.chargeTime = this.chargeTime === 0 ? 1 : this.chargeTime * 1.1;
+                this.chargeTime = this.chargeTime === 0
+                    ? Math.max(1, chargeRateMultiplier)
+                    : this.chargeTime * (1 + (0.1 * chargeRateMultiplier));
                 this.chargeTime = Math.min(this.chargeTime, 100);
             }
 
@@ -286,12 +295,18 @@ class LevelScene extends LooseScene {
     }
 
     firePlayerArrow(power: number): void {
+        const aimSpreadMultiplier = this.player.aimSpreadMultiplier ?? 1;
+        const throwForceMultiplier = this.player.throwForceMultiplier ?? 1;
+        const scatterRadius = Math.max(0, (aimSpreadMultiplier - 1) * PLAYER_SHOT_SCATTER_PIXELS);
+        const targetX = this.mousex + (Math.random() * scatterRadius * 2 - scatterRadius);
+        const targetY = this.mousey + (Math.random() * scatterRadius * 2 - scatterRadius);
+
         this.shootArrow(
-            power * this.playerLoadout.powerMultiplier,
+            power * this.playerLoadout.powerMultiplier * throwForceMultiplier,
             this.levelScale,
             this.bow,
-            this.mousex,
-            this.mousey,
+            targetX,
+            targetY,
             this.playerLoadout.projectile,
             this.spawnedArrows
         );
@@ -415,8 +430,53 @@ class LevelScene extends LooseScene {
         this.refreshHumanoidStatusDisplay(humanoid);
     }
 
-    applyStatusDamage(person: RagdollPerson, damage: number): void {
-        if (person.health <= 0) {
+    updatePlayerStatusEffects(delta: number): void {
+        const activeEffects = this.player.activeStatusEffects;
+
+        if (!activeEffects || this.player.health <= 0) {
+            return;
+        }
+
+        let pendingBurnDamage = 0;
+        let burnHealthFloor = 0;
+
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            const activeStatus = activeEffects[statusKind];
+
+            if (!activeStatus) {
+                return;
+            }
+
+            if (activeStatus.remainingMs != null) {
+                activeStatus.remainingMs -= delta;
+
+                if (activeStatus.remainingMs <= 0) {
+                    delete activeEffects[statusKind];
+                    return;
+                }
+            }
+
+            if (activeStatus.effect.kind === "burn") {
+                activeStatus.tickTimerMs += delta;
+                burnHealthFloor = Math.max(burnHealthFloor, activeStatus.effect.minHealthAfterTicks ?? 0);
+
+                while (activeStatus.tickTimerMs >= activeStatus.effect.tickIntervalMs) {
+                    activeStatus.tickTimerMs -= activeStatus.effect.tickIntervalMs;
+                    pendingBurnDamage += activeStatus.effect.damagePerTick * activeStatus.stacks;
+                }
+            }
+        });
+
+        if (pendingBurnDamage > 0) {
+            this.applyStatusDamage(this.player, pendingBurnDamage, burnHealthFloor);
+        }
+
+        this.refreshPlayerStatusModifiers();
+        this.refreshPlayerStatusDisplay();
+    }
+
+    applyStatusDamage(person: RagdollPerson, damage: number, minRemainingHealth = 0): void {
+        if (person.health <= 0 || damage <= 0) {
             return;
         }
 
@@ -424,7 +484,19 @@ class LevelScene extends LooseScene {
             sprite.setTint(0xff7b00);
         });
 
-        person.health -= damage;
+        const maxDamage = Math.max(0, person.health - minRemainingHealth);
+        const resolvedDamage = Math.min(damage, maxDamage);
+
+        if (resolvedDamage <= 0) {
+            this.time.delayedCall(120, () => {
+                person.linkedSprites.forEach((sprite) => {
+                    sprite.clearTint();
+                });
+            });
+            return;
+        }
+
+        person.health -= resolvedDamage;
 
         this.time.delayedCall(120, () => {
             person.linkedSprites.forEach((sprite) => {
@@ -437,21 +509,13 @@ class LevelScene extends LooseScene {
         }
     }
 
-    applyProjectileStatusEffects(person: RagdollPerson, statusEffects?: EnemyStatusEffectConfig[]): void {
-        if (!statusEffects || statusEffects.length === 0 || person === this.player || !person.activeStatusEffects) {
+    applyStatusEffect(person: RagdollPerson, statusEffect: EnemyStatusEffectConfig): void {
+        const activeEffects = person.activeStatusEffects;
+
+        if (!activeEffects) {
             return;
         }
 
-        statusEffects.forEach((statusEffect) => {
-            this.applyEnemyStatusEffect(person, statusEffect);
-        });
-
-        this.refreshHumanoidStatusModifiers(person);
-        this.refreshHumanoidStatusDisplay(person);
-    }
-
-    applyEnemyStatusEffect(person: RagdollPerson, statusEffect: EnemyStatusEffectConfig): void {
-        const activeEffects = person.activeStatusEffects!;
         const existingStatus = activeEffects[statusEffect.kind];
         const maxStacks = Math.max(1, statusEffect.maxStacks ?? 1);
         const durationMs = statusEffect.durationMs != null && statusEffect.durationMs > 0
@@ -476,6 +540,37 @@ class LevelScene extends LooseScene {
         }
     }
 
+    applyStatusEffectsToHumanoid(person: RagdollPerson, statusEffects?: EnemyStatusEffectConfig[]): void {
+        if (!statusEffects || statusEffects.length === 0 || person === this.player) {
+            return;
+        }
+
+        statusEffects.forEach((statusEffect) => {
+            this.applyStatusEffect(person, statusEffect);
+        });
+
+        this.refreshHumanoidStatusModifiers(person);
+        this.refreshHumanoidStatusDisplay(person);
+    }
+
+    applyStatusEffectsToPlayer(statusEffects?: EnemyStatusEffectConfig[]): void {
+        if (!statusEffects || statusEffects.length === 0) {
+            return;
+        }
+
+        statusEffects.forEach((statusEffect) => {
+            if (statusEffect.kind === "bounty") {
+                this.removePlayerCurrency(statusEffect.currencyLossOnHit ?? 0);
+                return;
+            }
+
+            this.applyStatusEffect(this.player, statusEffect);
+        });
+
+        this.refreshPlayerStatusModifiers();
+        this.refreshPlayerStatusDisplay();
+    }
+
     refreshHumanoidStatusModifiers(humanoid: RagdollPerson): void {
         let rewardMultiplier = 1;
         let aimSpreadMultiplier = 1;
@@ -491,7 +586,7 @@ class LevelScene extends LooseScene {
 
             switch (activeStatus.effect.kind) {
             case "bounty":
-                rewardMultiplier += activeStatus.effect.rewardMultiplierPerStack * activeStatus.stacks;
+                rewardMultiplier += (activeStatus.effect.rewardMultiplierPerStack ?? 0) * activeStatus.stacks;
                 break;
             case "scatter":
                 aimSpreadMultiplier += activeStatus.effect.aimSpreadMultiplierPerStack * activeStatus.stacks;
@@ -531,7 +626,7 @@ class LevelScene extends LooseScene {
 
             switch (activeStatus.effect.kind) {
             case "bounty":
-                statusSegments.push(`Cash x${(1 + activeStatus.effect.rewardMultiplierPerStack * activeStatus.stacks).toFixed(2)}`);
+                statusSegments.push(`Cash x${(1 + ((activeStatus.effect.rewardMultiplierPerStack ?? 0) * activeStatus.stacks)).toFixed(2)}`);
                 break;
             case "burn":
                 statusSegments.push(`Burn ${activeStatus.stacks}`);
@@ -550,6 +645,69 @@ class LevelScene extends LooseScene {
         humanoid.statusDisplay.setText(statusSegments.join("  |  "));
     }
 
+    refreshPlayerStatusModifiers(): void {
+        let aimSpreadMultiplier = 1;
+        let throwForceMultiplier = 1;
+        let chargeRateMultiplier = 1;
+
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            const activeStatus = this.player.activeStatusEffects?.[statusKind];
+
+            if (!activeStatus) {
+                return;
+            }
+
+            switch (activeStatus.effect.kind) {
+            case "scatter":
+                aimSpreadMultiplier += activeStatus.effect.aimSpreadMultiplierPerStack * activeStatus.stacks;
+                throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                break;
+            case "jam":
+                chargeRateMultiplier /= 1 + (activeStatus.effect.attackIntervalMultiplierPerStack * activeStatus.stacks);
+                throwForceMultiplier -= activeStatus.effect.throwForceReductionPerStack * activeStatus.stacks;
+                break;
+            default:
+                break;
+            }
+        });
+
+        this.player.aimSpreadMultiplier = aimSpreadMultiplier;
+        this.player.throwForceMultiplier = Math.max(0.2, throwForceMultiplier);
+        this.player.chargeRateMultiplier = Math.max(0.2, chargeRateMultiplier);
+    }
+
+    refreshPlayerStatusDisplay(): void {
+        if (!this.player.statusDisplay) {
+            return;
+        }
+
+        const statusSegments: string[] = [];
+
+        ENEMY_STATUS_ORDER.forEach((statusKind) => {
+            const activeStatus = this.player.activeStatusEffects?.[statusKind];
+
+            if (!activeStatus) {
+                return;
+            }
+
+            switch (activeStatus.effect.kind) {
+            case "burn":
+                statusSegments.push(`Burn ${activeStatus.stacks}`);
+                break;
+            case "scatter":
+                statusSegments.push(`Scatter ${activeStatus.stacks}`);
+                break;
+            case "jam":
+                statusSegments.push(`Jam ${activeStatus.stacks}`);
+                break;
+            default:
+                break;
+            }
+        });
+
+        this.player.statusDisplay.setText(statusSegments.join("  |  "));
+    }
+
     rollAttackPower(humanoid: RagdollPerson): number {
         const attackConfig = humanoid.archetype!.attack;
         return (Math.random() * (attackConfig.powerMax - attackConfig.powerMin)) + attackConfig.powerMin;
@@ -559,6 +717,11 @@ class LevelScene extends LooseScene {
         this.player.healthDisplay!.setText(`Health: ${this.player.health}`);
         this.player.healthDisplay!.x = this.player.parts.chest.position.x;
         this.player.healthDisplay!.y = this.player.parts.chest.position.y - 100;
+
+        if (this.player.statusDisplay) {
+            this.player.statusDisplay.x = this.player.parts.chest.position.x;
+            this.player.statusDisplay.y = this.player.parts.chest.position.y - 132;
+        }
     }
 
     updatePlayerOverheal(delta: number): void {
@@ -693,6 +856,7 @@ class LevelScene extends LooseScene {
     }
 
     spawnEnemy(config: EnemySpawnConfig): RagdollPerson {
+        const resolvedArchetype = resolveEnemyArchetype(config.archetype);
         const enemy = this.assignCombatId(this.ragdollFactory.createEnemy(config.x, config.y, config.scale, {
             staticBody: config.staticBody,
             health: config.health,
@@ -701,8 +865,11 @@ class LevelScene extends LooseScene {
             delayAttack: config.attackDelay
         }));
 
-        enemy.archetype = config.archetype;
-        enemy.spawnConfig = config;
+        enemy.archetype = resolvedArchetype;
+        enemy.spawnConfig = {
+            ...config,
+            archetype: resolvedArchetype
+        };
         return enemy;
     }
 
@@ -744,6 +911,7 @@ class LevelScene extends LooseScene {
             humanoid.archetype!.projectile
         );
 
+        newArrow.sourceCombatId = humanoid.combatId;
         this.opponentArrows.push(newArrow);
         this.time.delayedCall(attackConfig.cleanupDelayMs, () => {
             if (newArrow) {
@@ -781,6 +949,7 @@ class LevelScene extends LooseScene {
         arrow.alreadyHit = false;
         arrow.projectileConfig = projectileConfig;
         arrow.body.collisionFilter.group = projectileConfig.collisionGroup;
+        arrow.body.isSensor = (projectileConfig.pierceCount ?? 0) > 0;
         arrow.hitTargetIds = [];
         arrow.piercesRemaining = projectileConfig.pierceCount ?? 0;
 
@@ -944,10 +1113,17 @@ class LevelScene extends LooseScene {
             });
 
             if (arrowList.fromplayer) {
-                this.applyProjectileStatusEffects(person, arrow.projectileConfig.statusEffects);
+                this.applyStatusEffectsToHumanoid(person, arrow.projectileConfig.statusEffects);
 
                 if (damageDealt > 0) {
                     this.healPlayer(arrow.projectileConfig.healPlayerOnHit ?? 0, person.parts.head.position.x, person.parts.head.position.y - 90);
+                }
+            }
+            else {
+                this.applyStatusEffectsToPlayer(arrow.projectileConfig.statusEffects);
+
+                if (damageDealt > 0) {
+                    this.healProjectileOwner(arrow.sourceCombatId, arrow.projectileConfig.healOwnerOnHit ?? 0);
                 }
             }
 
@@ -1013,6 +1189,79 @@ class LevelScene extends LooseScene {
             ease: "Cubic.out",
             onComplete: () => {
                 healText.destroy();
+            }
+        });
+    }
+
+    healProjectileOwner(sourceCombatId: string | undefined, amount: number): void {
+        if (!sourceCombatId || amount <= 0) {
+            return;
+        }
+
+        const sourceEnemy = this.humanoids.find((humanoid) => humanoid.combatId === sourceCombatId);
+
+        if (!sourceEnemy || sourceEnemy.health <= 0) {
+            return;
+        }
+
+        const maxHealth = sourceEnemy.spawnConfig?.health ?? sourceEnemy.health;
+        const previousHealth = sourceEnemy.health;
+        sourceEnemy.health = Math.min(maxHealth, sourceEnemy.health + amount);
+        const healedAmount = sourceEnemy.health - previousHealth;
+
+        if (healedAmount <= 0) {
+            return;
+        }
+
+        const healText = this.add.text(sourceEnemy.parts.head.position.x, sourceEnemy.parts.head.position.y - 90, `+${healedAmount} HP`, {
+            font: "bold 24px Arial",
+            fill: "#52b788"
+        }).setOrigin(0.5, 0.5).setDepth(30);
+
+        this.tweens.add({
+            targets: healText,
+            y: healText.y - 50,
+            alpha: { from: 1, to: 0 },
+            duration: 700,
+            ease: "Cubic.out",
+            onComplete: () => {
+                healText.destroy();
+            }
+        });
+    }
+
+    removePlayerCurrency(amount: number): void {
+        if (amount <= 0 || this.player.health <= 0) {
+            return;
+        }
+
+        const removedAmount = Math.min(amount, this.playerProfile.currency);
+
+        if (removedAmount <= 0) {
+            return;
+        }
+
+        this.playerProfile = updatePlayerProfile((profile) => {
+            profile.currency = Math.max(0, profile.currency - removedAmount);
+        });
+        this.currencyEarned -= removedAmount;
+        this.refreshEconomyDisplay();
+
+        const lossText = this.add.text(
+            this.player.parts.chest.position.x,
+            this.player.parts.chest.position.y - 160,
+            `-$${removedAmount}`,
+            { font: "bold 28px Arial", fill: "#ef476f" }
+        ).setOrigin(0.5, 0.5).setDepth(30);
+
+        this.tweens.add({
+            targets: lossText,
+            y: lossText.y - 50,
+            alpha: { from: 1, to: 0 },
+            duration: 800,
+            ease: "Cubic.out",
+            onComplete: () => {
+                lossText.destroy();
             }
         });
     }

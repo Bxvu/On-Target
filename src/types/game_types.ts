@@ -80,6 +80,7 @@ interface MatterArrow extends MatterImage {
     alreadyHit: boolean;
     bodyConstraint?: MatterConstraint;
     projectileConfig: ProjectileConfig;
+    sourceCombatId?: string;
     body: MatterBody;
     active: boolean;
     hitTargetIds: string[];
@@ -115,6 +116,7 @@ interface RagdollPerson {
     rewardMultiplier?: number;
     aimSpreadMultiplier?: number;
     throwForceMultiplier?: number;
+    chargeRateMultiplier?: number;
     archetype?: EnemyArchetype;
     loadout?: PlayerLoadout;
     spawnConfig?: EnemySpawnConfig;
@@ -133,13 +135,15 @@ interface BaseEnemyStatusEffectConfig {
 
 interface BountyStatusEffectConfig extends BaseEnemyStatusEffectConfig {
     kind: "bounty";
-    rewardMultiplierPerStack: number;
+    rewardMultiplierPerStack?: number;
+    currencyLossOnHit?: number;
 }
 
 interface BurnStatusEffectConfig extends BaseEnemyStatusEffectConfig {
     kind: "burn";
     damagePerTick: number;
     tickIntervalMs: number;
+    minHealthAfterTicks?: number;
 }
 
 interface ScatterStatusEffectConfig extends BaseEnemyStatusEffectConfig {
@@ -183,6 +187,7 @@ interface ProjectileConfig {
     minImpactSpeed?: number;
     healPlayerOnHit?: number;
     healPlayerOnKill?: number;
+    healOwnerOnHit?: number;
 }
 
 interface EnemyAttackTuning {

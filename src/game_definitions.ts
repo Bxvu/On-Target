@@ -66,6 +66,7 @@ function createWeaponProjectile(config: {
     minImpactSpeed?: number;
     healPlayerOnHit?: number;
     healPlayerOnKill?: number;
+    healOwnerOnHit?: number;
 }): ProjectileConfig {
     return {
         id: config.id,
@@ -82,7 +83,41 @@ function createWeaponProjectile(config: {
         sticksToTargets: config.sticksToTargets ?? true,
         minImpactSpeed: config.minImpactSpeed,
         healPlayerOnHit: config.healPlayerOnHit,
-        healPlayerOnKill: config.healPlayerOnKill
+        healPlayerOnKill: config.healPlayerOnKill,
+        healOwnerOnHit: config.healOwnerOnHit
+    };
+}
+
+function createEnemyProjectile(config: {
+    id: string;
+    texture?: string;
+    scale: number;
+    lifetimeMs: number;
+    maxActive: number;
+    damage: DamageProfile;
+    tint?: number;
+    pierceCount?: number;
+    statusEffects?: EnemyStatusEffectConfig[];
+    hitboxShape?: ProjectileHitboxShape;
+    sticksToTargets?: boolean;
+    minImpactSpeed?: number;
+    healOwnerOnHit?: number;
+}): ProjectileConfig {
+    return {
+        id: config.id,
+        texture: config.texture ?? "arrow",
+        scale: config.scale,
+        lifetimeMs: config.lifetimeMs,
+        collisionGroup: 15,
+        maxActive: config.maxActive,
+        damage: config.damage,
+        tint: config.tint,
+        pierceCount: config.pierceCount ?? 0,
+        statusEffects: config.statusEffects?.map((effect) => ({ ...effect })),
+        hitboxShape: config.hitboxShape ?? "rectangle",
+        sticksToTargets: config.sticksToTargets ?? true,
+        minImpactSpeed: config.minImpactSpeed,
+        healOwnerOnHit: config.healOwnerOnHit
     };
 }
 
@@ -133,9 +168,13 @@ function formatModifierPercent(value: number): string {
 function describeEnemyStatusEffect(effect: EnemyStatusEffectConfig): string {
     switch (effect.kind) {
     case "bounty":
-        return `Status: +${formatModifierPercent(effect.rewardMultiplierPerStack)} money per stack`;
+        return effect.currencyLossOnHit != null && effect.currencyLossOnHit > 0
+            ? `Status: -$${effect.currencyLossOnHit} on hit`
+            : `Status: +${formatModifierPercent(effect.rewardMultiplierPerStack ?? 0)} money per stack`;
     case "burn":
-        return `Status: Burn ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`;
+        return effect.minHealthAfterTicks != null
+            ? `Status: Burn ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s (stops at ${effect.minHealthAfterTicks} HP)`
+            : `Status: Burn ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`;
     case "scatter":
         return `Status: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} aim spread, -${formatModifierPercent(effect.throwForceReductionPerStack)} throw force per stack`;
     case "jam":
@@ -156,6 +195,10 @@ function getProjectileStatusSummary(projectile: ProjectileConfig): string[] {
         summary.push(`Heal: +${projectile.healPlayerOnKill} on kill`);
     }
 
+    if (projectile.healOwnerOnHit && projectile.healOwnerOnHit > 0) {
+        summary.push(`Heal owner: +${projectile.healOwnerOnHit} on hit`);
+    }
+
     if (projectile.statusEffects && projectile.statusEffects.length > 0) {
         summary.push(...projectile.statusEffects.map((effect) => describeEnemyStatusEffect(effect)));
     }
@@ -167,20 +210,143 @@ function getProjectileStatusSummary(projectile: ProjectileConfig): string[] {
     return summary;
 }
 
-const ENEMY_ARROW_CONFIG: ProjectileConfig = {
+const ENEMY_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
     id: "enemy-arrow",
-    texture: "arrow",
     scale: 0.2,
     lifetimeMs: 2500,
-    collisionGroup: 15,
+    maxActive: 25,
+    damage: {
+        body: 1,
+        head: 3
+    }
+});
+
+const ENEMY_JAM_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
+    id: "enemy-jam-arrow",
+    scale: 0.2,
+    lifetimeMs: 2500,
     maxActive: 25,
     damage: {
         body: 1,
         head: 3
     },
-    hitboxShape: "rectangle",
-    sticksToTargets: true
-};
+    tint: 0x577590,
+    statusEffects: [{
+        kind: "jam",
+        attackIntervalMultiplierPerStack: 0.2,
+        throwForceReductionPerStack: 0.15,
+        durationMs: 3500,
+        maxStacks: 2
+    }]
+});
+
+const ENEMY_BOUNTY_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
+    id: "enemy-bounty-arrow",
+    scale: 0.18,
+    lifetimeMs: 2500,
+    maxActive: 25,
+    damage: {
+        body: 1,
+        head: 2
+    },
+    tint: 0xf9c74f,
+    statusEffects: [{
+        kind: "bounty",
+        currencyLossOnHit: 8
+    }]
+});
+
+const ENEMY_BURN_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
+    id: "enemy-burn-arrow",
+    scale: 0.19,
+    lifetimeMs: 2500,
+    maxActive: 25,
+    damage: {
+        body: 1,
+        head: 3
+    },
+    tint: 0xf3722c,
+    statusEffects: [{
+        kind: "burn",
+        damagePerTick: 1,
+        tickIntervalMs: 700,
+        durationMs: 4200,
+        maxStacks: 3,
+        minHealthAfterTicks: 4
+    }]
+});
+
+const ENEMY_SCATTER_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
+    id: "enemy-scatter-arrow",
+    scale: 0.18,
+    lifetimeMs: 2500,
+    maxActive: 25,
+    damage: {
+        body: 1,
+        head: 3
+    },
+    tint: 0x43aa8b,
+    statusEffects: [{
+        kind: "scatter",
+        aimSpreadMultiplierPerStack: 0.35,
+        throwForceReductionPerStack: 0.05,
+        durationMs: 5000,
+        maxStacks: 3
+    }]
+});
+
+const ENEMY_PIERCE_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
+    id: "enemy-pierce-arrow",
+    scale: 0.2,
+    lifetimeMs: 2500,
+    maxActive: 25,
+    damage: {
+        body: 2,
+        head: 4
+    },
+    tint: 0x7b2cbf,
+    pierceCount: 2
+});
+
+const ENEMY_HEALING_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
+    id: "enemy-healing-arrow",
+    scale: 0.19,
+    lifetimeMs: 2500,
+    maxActive: 25,
+    damage: {
+        body: 2,
+        head: 3
+    },
+    tint: 0x52b788,
+    healOwnerOnHit: 2
+});
+
+const ENEMY_ROCK_CONFIG: ProjectileConfig = createEnemyProjectile({
+    id: "enemy-rock",
+    texture: "rock",
+    scale: 0.18,
+    lifetimeMs: 2500,
+    maxActive: 25,
+    damage: {
+        body: 2,
+        head: 3
+    },
+    tint: 0xffffff,
+    hitboxShape: "circle",
+    sticksToTargets: false,
+    minImpactSpeed: 0
+});
+
+const ENEMY_ALTERNATE_PROJECTILE_CHANCE = 0.1;
+const ENEMY_ALTERNATE_PROJECTILES: ProjectileConfig[] = [
+    ENEMY_BOUNTY_ARROW_CONFIG,
+    ENEMY_BURN_ARROW_CONFIG,
+    ENEMY_SCATTER_ARROW_CONFIG,
+    ENEMY_JAM_ARROW_CONFIG,
+    ENEMY_PIERCE_ARROW_CONFIG,
+    ENEMY_HEALING_ARROW_CONFIG,
+    ENEMY_ROCK_CONFIG
+];
 
 const STANDARD_ENEMY_ARCHETYPE: EnemyArchetype = {
     id: "standard",
@@ -199,6 +365,54 @@ const STANDARD_ENEMY_ARCHETYPE: EnemyArchetype = {
     },
     currencyReward: 10
 };
+
+const LEVEL_FOUR_BOSS_ARCHETYPE: EnemyArchetype = {
+    ...STANDARD_ENEMY_ARCHETYPE,
+    id: "level-four-boss",
+    projectile: createEnemyProjectile({
+        id: "level-four-boss-shot",
+        texture: "arrow",
+        scale: 0.22,
+        lifetimeMs: 3200,
+        maxActive: 25,
+        damage: {
+            body: 2,
+            head: 4
+        },
+        tint: 0xff4d6d,
+        pierceCount: 3,
+        healOwnerOnHit: 2,
+        statusEffects: [
+            {
+                kind: "bounty",
+                currencyLossOnHit: 10
+            },
+            {
+                kind: "burn",
+                damagePerTick: 1,
+                tickIntervalMs: 700,
+                durationMs: 4200,
+                maxStacks: 3,
+                minHealthAfterTicks: 4
+            },
+            {
+                kind: "scatter",
+                aimSpreadMultiplierPerStack: 0.35,
+                throwForceReductionPerStack: 0.05,
+                durationMs: 5000,
+                maxStacks: 3
+            },
+            {
+                kind: "jam",
+                attackIntervalMultiplierPerStack: 0.2,
+                throwForceReductionPerStack: 0.05,
+                durationMs: 3500,
+                maxStacks: 2
+            }
+        ]
+    })
+};
+
 
 // Add new weapons here. One entry is all the shop and gameplay need.
 const WEAPON_CATALOG: WeaponDefinition[] = [
@@ -309,7 +523,10 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
                 throwForceReductionPerStack: 0.15,
                 durationMs: 10000,
                 maxStacks: 1000
-            }]
+            }],
+            healPlayerOnHit: 1,
+            healPlayerOnKill: 5,
+            sticksToTargets: false
         }
     }),
     createWeaponDefinition({
@@ -668,6 +885,29 @@ function createEnemySpawnConfig(config: Omit<EnemySpawnConfig, "archetype"> & { 
     };
 }
 
+function resolveEnemyArchetype(archetype: EnemyArchetype): EnemyArchetype {
+    if (archetype.projectile.id !== ENEMY_ARROW_CONFIG.id) {
+        return archetype;
+    }
+
+    if (Math.random() >= ENEMY_ALTERNATE_PROJECTILE_CHANCE) {
+        return archetype;
+    }
+
+    const alternateProjectiles = ENEMY_ALTERNATE_PROJECTILES.filter((projectile) => projectile.id !== archetype.projectile.id);
+
+    if (alternateProjectiles.length === 0) {
+        return archetype;
+    }
+
+    const projectile = alternateProjectiles[Math.floor(Math.random() * alternateProjectiles.length)];
+
+    return {
+        ...archetype,
+        projectile
+    };
+}
+
 const MANUAL_LEVEL_DEFINITIONS: ManualLevelDefinition[] = [
     {
         sceneKey: "LevelOne",
@@ -784,17 +1024,38 @@ const MANUAL_LEVEL_DEFINITIONS: ManualLevelDefinition[] = [
         label: "Level 4",
         menuColor: 0x6d9dc5,
         nextLevel: "MainMenu",
-        createEnemyConfigs: (levelScale) => [
-            createEnemySpawnConfig({
-                x: 1250,
-                y: 400,
-                scale: levelScale + 0.5,
-                health: 25,
-                flip: true,
-                attackInterval: 2000,
-                attackDelay: 0
-            })
-        ]
+        createEnemyConfigs: (levelScale) => {
+            const enemyConfigs: EnemySpawnConfig[] = [
+                createEnemySpawnConfig({
+                    x: 1700,
+                    y: 450,
+                    scale: levelScale + 0.5,
+                    health: 50,
+                    flip: true,
+                    attackInterval: 2000,
+                    attackDelay: 0,
+                    archetype: LEVEL_FOUR_BOSS_ARCHETYPE
+                })
+            ];
+            const weirdAmalgamX = 1550;
+            const weirdAmalgamY = 475;
+            const weirdAmalgamScale = levelScale - 0.6;
+            const humanoidCount = 10;
+
+            for (let count = 0; count < humanoidCount; count++) {
+                enemyConfigs.push(createEnemySpawnConfig({
+                    x: weirdAmalgamX - count,
+                    y: weirdAmalgamY,
+                    scale: weirdAmalgamScale,
+                    health: 1,
+                    flip: true,
+                    attackInterval: Math.random() * 500 + 7500,
+                    attackDelay: Math.random() * 2 + 10000
+                }));
+            }
+
+            return enemyConfigs;
+        }
     }
 ];
 

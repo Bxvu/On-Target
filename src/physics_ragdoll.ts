@@ -118,6 +118,7 @@ class HumanoidFactory {
         person.rewardMultiplier = 1;
         person.aimSpreadMultiplier = 1;
         person.throwForceMultiplier = 1;
+        person.chargeRateMultiplier = 1;
 
         if (showHealthDisplay) {
             person.attackInterval = attackInterval;
