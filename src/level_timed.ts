@@ -4,10 +4,13 @@ const TIMED_LEVEL_MAX_ACTIVE_POWERUPS = 2;
 const TIMED_HARD_ATTACK_DELAY_REDUCTION_PER_KILL = 0.25;
 const TIMED_HARD_MELEE_SPAWN_CHANCE = 0.4;
 const TIMED_HARD_MAX_MELEE_PER_WAVE = 2;
-const ENDLESS_MAX_ALTERNATE_PROJECTILE_CHANCE = 0.75;
+const TIMED_STARFISH_SPAWN_CHANCE = 0.2;
+const ENDLESS_MAX_ALTERNATE_PROJECTILE_CHANCE = 0.9;
 const ENDLESS_ALTERNATE_PROJECTILE_RAMP_KILLS = 100;
 const ENDLESS_MAX_TIMED_POWERUP_SPAWN_CHANCE = 0.85;
 const ENDLESS_MAX_TIMED_POWERUP_DROP_CHANCE = 0.45;
+const ENDLESS_MAX_AMALGAM_SPAWN_CHANCE = 0.65;
+const ENDLESS_MAX_STARFISH_SPAWN_CHANCE = 0.55;
 
 class TimedLevel extends LevelScene {
     timedSceneKey: SceneKey;
@@ -37,8 +40,16 @@ class TimedLevel extends LevelScene {
         return Phaser.Math.Between(5, 9);
     }
 
+    getAmalgamSpawnChance(): number {
+        return 0.3;
+    }
+
     getTimedPowerupSpawnChance(): number {
         return TIMED_LEVEL_POWERUP_SPAWN_CHANCE;
+    }
+
+    getStarfishSpawnChance(): number {
+        return TIMED_STARFISH_SPAWN_CHANCE;
     }
 
     preload(): void {
@@ -110,7 +121,7 @@ class TimedLevel extends LevelScene {
 
     nextWave(): void {
         let humanoidCount = this.getAmalgamBodyCount();
-        const amalgamSpawned = Math.random() < 0.3;
+        const amalgamSpawned = Math.random() < this.getAmalgamSpawnChance();
         const waveConfigs: EnemySpawnConfig[] = [];
 
         if (amalgamSpawned) {
@@ -143,6 +154,20 @@ class TimedLevel extends LevelScene {
                 flip: true,
                 attackInterval: Math.random() * 5000 + 750,
                 attackDelay: Math.random() * 9 + 1
+            }));
+        }
+
+        if (Math.random() < this.getStarfishSpawnChance()) {
+            const difficulty = Math.random();
+            waveConfigs.push(createEnemySpawnConfig({
+                x: Math.random() * 900 + 700,
+                y: Math.random() * 520 + 220,
+                scale: Math.max(0.6, this.levelScale + (difficulty * 0.35) - 0.1),
+                health: this.getScaledEnemyHealth(Math.floor(difficulty * 3) + 4),
+                flip: true,
+                attackInterval: Math.random() * 1400 + 3200,
+                attackDelay: Math.random() * 3 + 1,
+                archetype: SWIRL_STARFISH_ARCHETYPE
             }));
         }
 
@@ -216,6 +241,14 @@ class EndlessLevel extends TimedLevel {
         return Phaser.Math.Between(minBodies, maxBodies);
     }
 
+    getAmalgamSpawnChance(): number {
+        return Phaser.Math.Linear(
+            0.3,
+            ENDLESS_MAX_AMALGAM_SPAWN_CHANCE,
+            this.getEndlessDifficultyProgress()
+        );
+    }
+
     getTimedPowerupSpawnChance(): number {
         return Phaser.Math.Linear(
             TIMED_LEVEL_POWERUP_SPAWN_CHANCE,
@@ -228,6 +261,14 @@ class EndlessLevel extends TimedLevel {
         return Phaser.Math.Linear(
             TIMED_POWERUP_DROP_CHANCE,
             ENDLESS_MAX_TIMED_POWERUP_DROP_CHANCE,
+            this.getEndlessDifficultyProgress()
+        );
+    }
+
+    getStarfishSpawnChance(): number {
+        return Phaser.Math.Linear(
+            TIMED_STARFISH_SPAWN_CHANCE,
+            ENDLESS_MAX_STARFISH_SPAWN_CHANCE,
             this.getEndlessDifficultyProgress()
         );
     }

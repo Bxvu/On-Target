@@ -46,6 +46,7 @@ const PLAYER_THROW_ANCHOR_DISTANCE = 56;
 const MELEE_ATTACK_ARM_FORCE = 0.05;
 const MELEE_WINDUP_FORCE = 0.0013;
 const MELEE_RECOVER_FORCE = 0.0019;
+const MELEE_DAMAGE_RAMP_PER_ATTACK = 1.5;
 const PROJECTILE_COLLISION_CATEGORY = 0x0002;
 const TIMED_POWERUP_PICKUP_SCALE = 0.32;
 const TIMED_POWERUP_PICKUP_LIFETIME_MS = 9000;
@@ -280,6 +281,23 @@ class LevelScene extends LooseScene {
         return activePowerup.definition[key] ?? 0;
     }
 
+    getRapidChargeRateMultiplier(): number {
+        const activePowerup = this.activeTimedPowerups?.rapidCharge;
+
+        if (!activePowerup || activePowerup.remainingMs <= 0) {
+            return 1;
+        }
+
+        return activePowerup.definition.chargeRateMultiplier ?? 1;
+    }
+
+    hasInstantRapidChargePowerup(): boolean {
+        const activePowerup = this.activeTimedPowerups?.rapidCharge;
+        return activePowerup != null
+            && activePowerup.remainingMs > 0
+            && (activePowerup.definition.instantCharge ?? false);
+    }
+
     getPlayerProjectileConfig(): ProjectileConfig {
         const projectile = this.playerLoadout.projectile;
         const damageBonus = this.getTimedPowerupValue("damage", "damageBonus");
@@ -388,6 +406,10 @@ class LevelScene extends LooseScene {
                 return;
             }
 
+            if (arrowList.owner !== "player" || arrow.hitLivingTarget || arrow.bodyConstraint || arrow.alreadyHit) {
+                return;
+            }
+
             for (const powerup of this.timedPowerups.slice()) {
                 if (!powerup.active || !powerup.body) {
                     continue;
@@ -410,7 +432,6 @@ class LevelScene extends LooseScene {
         this.applyTimedPowerupToPlayer(definition, powerup.x, powerup.y - 48);
         this.showTimedPowerupPickupText(definition.label, powerup.x, powerup.y - 70, definition.color);
         this.destroyTimedPowerup(powerup);
-        this.destroyArrow(arrow, arrowList);
         this.refreshPlayerStatusModifiers();
         this.refreshPlayerStatusDisplay();
     }
@@ -427,6 +448,34 @@ class LevelScene extends LooseScene {
                 remainingMs: definition.durationMs
             };
         }
+    }
+
+    drainPlayerTimedPowerups(amountMs: number): boolean {
+        let drainedPowerup = false;
+        let statusChanged = false;
+
+        PLAYER_TIMED_POWERUP_ORDER.forEach((kind) => {
+            const activePowerup = this.activeTimedPowerups?.[kind];
+
+            if (!activePowerup || activePowerup.remainingMs <= 0) {
+                return;
+            }
+
+            drainedPowerup = true;
+            activePowerup.remainingMs = Math.max(0, activePowerup.remainingMs - amountMs);
+            statusChanged = true;
+
+            if (activePowerup.remainingMs <= 0) {
+                delete this.activeTimedPowerups[kind];
+            }
+        });
+
+        if (statusChanged) {
+            this.refreshPlayerStatusModifiers();
+            this.refreshPlayerStatusDisplay();
+        }
+
+        return drainedPowerup;
     }
 
     purchasePausePowerupOffer(offer: PausePowerupOffer): { success: boolean; message: string } {
@@ -601,7 +650,7 @@ class LevelScene extends LooseScene {
     handlePlayerCharge(): void {
         const pointer = this.input.activePointer;
         const scaleMagnitude = Math.abs(this.levelScale) || 1;
-        const chargeRateMultiplier = this.player?.chargeRateMultiplier ?? 1;
+        const chargeRateMultiplier = (this.player?.chargeRateMultiplier ?? 1) * this.getRapidChargeRateMultiplier();
         const attackStyle = this.playerLoadout.weapon.attackStyle;
 
         if (pointer.isDown && this.canCharge) {
@@ -612,7 +661,7 @@ class LevelScene extends LooseScene {
                 this.firePlayerArrow(100 + 10 / scaleMagnitude);
                 this.chargeTime = 0;
             }
-            else if (this.instaCharge || this.hasActiveTimedPowerup("rapidCharge")) {
+            else if (this.instaCharge || this.hasInstantRapidChargePowerup()) {
                 this.chargeTime = 100;
             }
             else if (this.chargeTime < 100) {
@@ -810,6 +859,7 @@ class LevelScene extends LooseScene {
             elapsedMs: 0,
             durationMs
         };
+        person.triggered = false;
 
         if (kind === "meleeWindup") {
             person.meleeHitApplied = false;
@@ -894,9 +944,17 @@ class LevelScene extends LooseScene {
 
     updateRangedHumanoidAI(humanoid: RagdollPerson, delta: number, actionComplete: boolean): void {
         const attackConfig = humanoid.archetype?.attack;
+        const pulseConfig = humanoid.archetype?.pulse;
 
         if (!attackConfig) {
             return;
+        }
+
+        if (humanoid.actionState?.kind === "throw" && pulseConfig) {
+            if (!humanoid.triggered && this.getCombatActionProgress(humanoid) >= 0.55) {
+                humanoid.triggered = true;
+                this.performHumanoidAttack(humanoid);
+            }
         }
 
         if (actionComplete && (humanoid.actionState?.kind === "telegraph" || humanoid.actionState?.kind === "throw")) {
@@ -914,7 +972,9 @@ class LevelScene extends LooseScene {
             return;
         }
 
-        const telegraphWindowMs = Math.min(450, humanoid.attackInterval! * 0.35);
+        const telegraphWindowMs = pulseConfig
+            ? Math.min(1100, Math.max(700, humanoid.attackInterval! * 0.5))
+            : Math.min(450, humanoid.attackInterval! * 0.35);
 
         if (
             humanoid.timer! >= humanoid.attackInterval! - telegraphWindowMs
@@ -929,8 +989,11 @@ class LevelScene extends LooseScene {
         }
 
         humanoid.timer! -= humanoid.attackInterval!;
-        this.setCombatAction(humanoid, "throw", 180);
-        this.humanoidAttack(humanoid, this.levelScale, this.rollAttackPower(humanoid), this.player);
+        this.setCombatAction(humanoid, "throw", pulseConfig ? 360 : 180);
+
+        if (!pulseConfig) {
+            this.performHumanoidAttack(humanoid);
+        }
     }
 
     updateMeleeHumanoidAI(humanoid: RagdollPerson, delta: number, actionComplete: boolean): void {
@@ -965,6 +1028,12 @@ class LevelScene extends LooseScene {
             );
 
             if (!humanoid.meleeHitApplied && this.getCombatActionProgress(humanoid) >= 0.65) {
+                const meleeAttackCount = humanoid.meleeAttackCount ?? 0;
+                const scaledDamage = Math.max(
+                    1,
+                    Math.round(meleeConfig.damage * (1 + (meleeAttackCount * MELEE_DAMAGE_RAMP_PER_ATTACK)))
+                );
+
                 humanoid.meleeHitApplied = true;
                 this.applyDirectionalAttackForce(
                     humanoid.throwingArm,
@@ -974,11 +1043,12 @@ class LevelScene extends LooseScene {
                 );
 
                 if (distanceToPlayer <= meleeConfig.attackRange) {
-                    this.applyDirectDamage(this.player, meleeConfig.damage, 0xff7b00);
+                    this.applyDirectDamage(this.player, scaledDamage, 0xff7b00);
                 }
             }
 
             if (actionComplete) {
+                humanoid.meleeAttackCount = (humanoid.meleeAttackCount ?? 0) + 1;
                 this.setCombatAction(humanoid, "meleeRecover", meleeConfig.recoverMs * meleeAttackRateMultiplier);
             }
 
@@ -1023,6 +1093,10 @@ class LevelScene extends LooseScene {
     updateHumanoidVisualState(humanoid: RagdollPerson): void {
         const actionKind = humanoid.actionState?.kind ?? "idle";
         const telegraphSprite = humanoid.attackTelegraphSprite;
+
+        if (humanoid.bodyProfile === "starfish") {
+            this.applyStarfishPose(humanoid);
+        }
 
         if (telegraphSprite) {
             if (actionKind === "telegraph" || actionKind === "meleeWindup") {
@@ -1097,6 +1171,52 @@ class LevelScene extends LooseScene {
             Math.cos(angle) * magnitude,
             Math.sin(angle) * magnitude
         );
+    }
+
+    applyStarfishPose(humanoid: RagdollPerson): void {
+        if (humanoid.dead) {
+            return;
+        }
+
+        const actionKind = humanoid.actionState?.kind ?? "idle";
+        const revealProgress = actionKind === "throw"
+            ? 1
+            : actionKind === "telegraph"
+                ? this.getCombatActionProgress(humanoid)
+                : 0;
+        const pulse = Math.sin((this.sys.game.loop.time + humanoid.parts.head.position.x) * 0.005) * (1 - revealProgress) * 3;
+        const scaleMagnitude = Math.max(0.4, Math.abs(humanoid.spawnConfig?.scale ?? this.levelScale));
+        const centerX = humanoid.parts.head.position.x;
+        const centerY = humanoid.parts.head.position.y;
+        const poseForce = 0.0005 * scaleMagnitude;
+        const coreForce = 0.0007 * scaleMagnitude;
+        const poseTargets: Array<{
+            partName: Exclude<BodyPartName, "head">;
+            wrapped: { x: number; y: number };
+            exposed: { x: number; y: number };
+            magnitude?: number;
+        }> = [
+            { partName: "chest", wrapped: { x: 0, y: 30 }, exposed: { x: 0, y: 38 }, magnitude: coreForce },
+            { partName: "leftUpperArm", wrapped: { x: 0, y: -42 }, exposed: { x: 0, y: -72 }, magnitude: poseForce },
+            { partName: "leftLowerArm", wrapped: { x: 26 + pulse, y: -18 }, exposed: { x: 0, y: -122 }, magnitude: poseForce * 1.08 },
+            { partName: "rightUpperArm", wrapped: { x: 42, y: 0 }, exposed: { x: 72, y: 0 }, magnitude: poseForce },
+            { partName: "rightLowerArm", wrapped: { x: 18, y: 28 + pulse }, exposed: { x: 122, y: 0 }, magnitude: poseForce * 1.08 },
+            { partName: "leftUpperLeg", wrapped: { x: 0, y: 42 }, exposed: { x: 0, y: 72 }, magnitude: poseForce },
+            { partName: "leftLowerLeg", wrapped: { x: -26 - pulse, y: 18 }, exposed: { x: 0, y: 122 }, magnitude: poseForce * 1.08 },
+            { partName: "rightUpperLeg", wrapped: { x: -42, y: 0 }, exposed: { x: -72, y: 0 }, magnitude: poseForce },
+            { partName: "rightLowerLeg", wrapped: { x: -18, y: -28 - pulse }, exposed: { x: -122, y: 0 }, magnitude: poseForce * 1.08 }
+        ];
+
+        poseTargets.forEach((target) => {
+            const poseX = Phaser.Math.Linear(target.wrapped.x, target.exposed.x, revealProgress) * scaleMagnitude;
+            const poseY = Phaser.Math.Linear(target.wrapped.y, target.exposed.y, revealProgress) * scaleMagnitude;
+            this.applyPoseForce(
+                humanoid.parts[target.partName],
+                centerX + poseX,
+                centerY + poseY,
+                target.magnitude ?? poseForce
+            );
+        });
     }
 
     updateHumanoidStatusEffects(humanoid: RagdollPerson, delta: number): void {
@@ -1434,7 +1554,11 @@ class LevelScene extends LooseScene {
 
             switch (kind) {
             case "rapidCharge":
-                statusSegments.push(`Instant ${remainingSeconds}s`);
+                statusSegments.push(
+                    activePowerup.definition.instantCharge
+                        ? `Instant ${remainingSeconds}s`
+                        : `Charge x${activePowerup.definition.chargeRateMultiplier ?? 1} ${remainingSeconds}s`
+                );
                 break;
             case "damage":
                 statusSegments.push(`Damage +${activePowerup.definition.damageBonus ?? 0} ${remainingSeconds}s`);
@@ -1609,7 +1733,8 @@ class LevelScene extends LooseScene {
             health: config.health,
             flip: config.flip,
             attackInterval: config.attackInterval,
-            delayAttack: config.attackDelay
+            delayAttack: config.attackDelay,
+            bodyProfile: resolvedArchetype.bodyProfile ?? "default"
         }));
 
         enemy.archetype = resolvedArchetype;
@@ -1629,6 +1754,15 @@ class LevelScene extends LooseScene {
 
     spawnEnemies(configs: EnemySpawnConfig[]): RagdollPerson[] {
         return configs.map((config) => this.spawnEnemy(config));
+    }
+
+    performHumanoidAttack(humanoid: RagdollPerson): void {
+        if (humanoid.archetype?.pulse) {
+            this.humanoidPulseAttack(humanoid);
+            return;
+        }
+
+        this.humanoidAttack(humanoid, this.levelScale, this.rollAttackPower(humanoid), this.player);
     }
 
     humanoidAttack(humanoid: RagdollPerson, scale: number, power: number, player: RagdollPerson): void {
@@ -1680,6 +1814,64 @@ class LevelScene extends LooseScene {
         });
     }
 
+    humanoidPulseAttack(humanoid: RagdollPerson): void {
+        const pulseConfig = humanoid.archetype?.pulse;
+
+        if (!pulseConfig || this.player.health <= 0 || this.isLevelEnding) {
+            return;
+        }
+
+        const originX = humanoid.parts.head.position.x;
+        const originY = humanoid.parts.head.position.y;
+        const pulseRing = this.add.circle(originX, originY, 24, pulseConfig.visualColor, 0.08);
+        pulseRing.setStrokeStyle(10, pulseConfig.visualColor, 0.95);
+        pulseRing.setDepth(14);
+
+        this.tweens.add({
+            targets: pulseRing,
+            scaleX: pulseConfig.range / 24,
+            scaleY: pulseConfig.range / 24,
+            alpha: { from: 0.95, to: 0 },
+            duration: pulseConfig.visualDurationMs,
+            ease: "Cubic.out",
+            onComplete: () => {
+                pulseRing.destroy();
+            }
+        });
+
+        const playerTextX = this.player.parts.chest.position.x;
+        const playerTextY = this.player.parts.chest.position.y - 150;
+        const drainedPowerup = this.drainPlayerTimedPowerups(pulseConfig.powerupDrainMs);
+
+        if (drainedPowerup) {
+            this.showTimedPowerupPickupText(`Power Drain -${Math.round(pulseConfig.powerupDrainMs / 1000)}s`, playerTextX, playerTextY, pulseConfig.visualColor);
+            return;
+        }
+
+        this.applyDirectDamage(this.player, pulseConfig.fallbackDamage, pulseConfig.visualColor);
+        this.showTimedPowerupPickupText(`Pulse Hit -${pulseConfig.fallbackDamage} HP`, playerTextX, playerTextY, pulseConfig.visualColor);
+    }
+
+    interruptPulseAttack(humanoid: RagdollPerson): void {
+        if (!humanoid.archetype?.pulse || humanoid.health <= 0) {
+            return;
+        }
+
+        const actionKind = humanoid.actionState?.kind;
+
+        if (actionKind !== "telegraph" && actionKind !== "throw") {
+            return;
+        }
+
+        humanoid.timer = 0;
+        humanoid.triggered = false;
+        this.setCombatAction(humanoid, "idle");
+
+        if (humanoid.attackTelegraphSprite) {
+            humanoid.attackTelegraphSprite.clearTint();
+        }
+    }
+
     constructPlayer(x: number, y: number, scale: number, staticBody: boolean, health: number, flip: boolean): RagdollPerson {
         return this.assignCombatId(this.ragdollFactory.createPlayer(x, y, scale, {
             staticBody,
@@ -1711,6 +1903,7 @@ class LevelScene extends LooseScene {
         arrow.body.collisionFilter.category = PROJECTILE_COLLISION_CATEGORY;
         arrow.body.collisionFilter.group = projectileConfig.collisionGroup;
         arrow.body.isSensor = (projectileConfig.pierceCount ?? 0) > 0;
+        arrow.hitLivingTarget = false;
         arrow.hitTargetIds = [];
         arrow.piercesRemaining = projectileConfig.pierceCount ?? 0;
 
@@ -1884,6 +2077,7 @@ class LevelScene extends LooseScene {
         arrow.hitTargetIds.push(person.combatId);
 
         if (person.health > 0) {
+            arrow.hitLivingTarget = true;
             person.linkedSprites.forEach((sprite) => {
                 sprite.setTint(0xff0000);
             });
@@ -1907,6 +2101,7 @@ class LevelScene extends LooseScene {
                 this.applyStatusEffectsToHumanoid(person, arrow.projectileConfig.statusEffects);
 
                 if (damageDealt > 0) {
+                    this.interruptPulseAttack(person);
                     this.healPlayer(arrow.projectileConfig.healPlayerOnHit ?? 0, person.parts.head.position.x, person.parts.head.position.y - 90);
                 }
             }
@@ -2184,9 +2379,7 @@ class LevelScene extends LooseScene {
         person.activeStatusEffects = {};
 
         person.bodies.forEach((bodyPart) => {
-            if (bodyPart.label === "chest") {
-                this.matter.body.setStatic(bodyPart, false);
-            }
+            this.matter.body.setStatic(bodyPart, false);
         });
 
         this.time.delayedCall(2500, () => {

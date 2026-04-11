@@ -3,7 +3,8 @@ type ManualLevelKey =
     | "LevelTwo"
     | "LevelThree"
     | "LevelFour"
-    | "LevelFive";
+    | "LevelFive"
+    | "LevelSix";
 
 type SceneKey =
     | "MainMenu"
@@ -32,6 +33,7 @@ type TimedPowerupKind = "rapidCharge" | "heal" | "damage" | "pierce";
 type WeaponAttackStyle = "bow" | "throw";
 type EnemyBehaviorKind = "ranged" | "melee";
 type CombatActionKind = "idle" | "charge" | "throw" | "walk" | "telegraph" | "meleeWindup" | "meleeRecover" | "dead";
+type HumanoidBodyProfile = "default" | "starfish";
 type RagdollPartMap = Record<BodyPartName, MatterBody>;
 type RagdollSpriteMap = Partial<Record<BodyPartName, LinkedSprite>>;
 
@@ -92,6 +94,7 @@ interface MatterArrow extends MatterImage {
     sourceCombatId?: string;
     body: MatterBody;
     active: boolean;
+    hitLivingTarget: boolean;
     hitTargetIds: string[];
     piercesRemaining: number;
 }
@@ -110,6 +113,8 @@ interface TimedPowerupDefinition {
     textColor: string;
     durationMs?: number;
     healAmount?: number;
+    chargeRateMultiplier?: number;
+    instantCharge?: boolean;
     damageBonus?: number;
     pierceBonus?: number;
 }
@@ -146,6 +151,7 @@ interface RagdollPerson {
     bodies: MatterBody[];
     constraints: MatterConstraint[];
     parts: RagdollPartMap;
+    bodyProfile?: HumanoidBodyProfile;
     health: number;
     dead: boolean;
     ignoresProjectileCollisions?: boolean;
@@ -174,6 +180,7 @@ interface RagdollPerson {
     facingDirection?: number;
     actionState?: CombatActionState;
     meleeHitApplied?: boolean;
+    meleeAttackCount?: number;
     behaviorDelayRemainingMs?: number;
     archetype?: EnemyArchetype;
     loadout?: PlayerLoadout;
@@ -274,12 +281,22 @@ interface EnemyMeleeTuning {
     telegraphOuterStrength: number;
 }
 
+interface EnemyPulseTuning {
+    range: number;
+    powerupDrainMs: number;
+    fallbackDamage: number;
+    visualColor: number;
+    visualDurationMs: number;
+}
+
 interface EnemyArchetype {
     id: EnemyArchetypeId | string;
     behavior: EnemyBehaviorKind;
+    bodyProfile?: HumanoidBodyProfile;
     projectile?: ProjectileConfig;
     attack?: EnemyAttackTuning;
     melee?: EnemyMeleeTuning;
+    pulse?: EnemyPulseTuning;
     currencyReward: number;
 }
 
@@ -369,6 +386,7 @@ interface HumanoidPartConfig {
     width: number;
     height: number;
     color: string;
+    angle?: number;
     chamfer: (scale: number) => number | number[];
 }
 
@@ -399,6 +417,7 @@ interface HumanoidBuildOptions {
     attackInterval?: number;
     delayAttack?: number;
     showHealthDisplay?: boolean;
+    bodyProfile?: HumanoidBodyProfile;
     collisionGroupResolver: (partName: BodyPartName) => number;
 }
 

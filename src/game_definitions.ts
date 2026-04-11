@@ -235,8 +235,8 @@ const ENEMY_JAM_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
     tint: 0x577590,
     statusEffects: [{
         kind: "jam",
-        attackIntervalMultiplierPerStack: 0.2,
-        throwForceReductionPerStack: 0.15,
+        attackIntervalMultiplierPerStack: 0.1,
+        throwForceReductionPerStack: 0.05,
         durationMs: 3500,
         maxStacks: 2
     }]
@@ -290,7 +290,7 @@ const ENEMY_SCATTER_ARROW_CONFIG: ProjectileConfig = createEnemyProjectile({
     tint: 0x43aa8b,
     statusEffects: [{
         kind: "scatter",
-        aimSpreadMultiplierPerStack: 0.35,
+        aimSpreadMultiplierPerStack: 0.12,
         throwForceReductionPerStack: 0.05,
         durationMs: 5000,
         maxStacks: 3
@@ -435,6 +435,32 @@ const GROUND_BRUISER_ARCHETYPE: EnemyArchetype = {
     currencyReward: 20
 };
 
+const SWIRL_STARFISH_ARCHETYPE: EnemyArchetype = {
+    id: "swirl-starfish",
+    behavior: "ranged",
+    bodyProfile: "starfish",
+    attack: {
+        throwForceX: 0,
+        throwForceY: 0,
+        aimSpreadX: 0,
+        aimSpreadY: 0,
+        powerMin: 0,
+        powerMax: 0,
+        cleanupDelayMs: 0,
+        telegraphColor: 0xff8fab,
+        telegraphThickness: 6,
+        telegraphOuterStrength: 1.2
+    },
+    pulse: {
+        range: 1800,
+        powerupDrainMs: 2000,
+        fallbackDamage: 2,
+        visualColor: 0xff8fab,
+        visualDurationMs: 520
+    },
+    currencyReward: 24
+};
+
 
 // Add new weapons here. One entry is all the shop and gameplay need.
 const WEAPON_CATALOG: WeaponDefinition[] = [
@@ -535,9 +561,9 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
             {
                 kind: "burn",
                 damagePerTick: 1,
-                tickIntervalMs: 100,
-                durationMs: 500,
-                maxStacks: 1
+                tickIntervalMs: 200,
+                durationMs: 1000,
+                maxStacks: 1000
             },
             {
                 kind: "scatter",
@@ -685,7 +711,7 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
     }),
     createWeaponDefinition({
         id: "rock-bow",
-        name: "Rock Bow",
+        name: "Rock",
         description: "Fires a blunt stone that slams into enemies with a round hitbox instead of pinning into them.",
         cost: 85,
         bowTint: 0x8d6e63,
@@ -704,6 +730,96 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
                 head: 4
             },
             tint: 0xffffff,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1
+        }
+    }),
+    createWeaponDefinition({
+        id: "ember-rock-bow",
+        name: "Ember Rock",
+        description: "A hot stone that bonks hard and leaves a short burn ticking after impact.",
+        cost: 135,
+        bowTint: 0xf3722c,
+        attackStyle: "throw",
+        powerMultiplier: 0.52,
+        accentColor: 0xf3722c,
+        placeholderLabel: "Scorch",
+        projectile: {
+            id: "ember-rock-shot",
+            texture: "rock",
+            scale: 0.18,
+            lifetimeMs: 6500,
+            maxActive: 16,
+            damage: {
+                body: 2,
+                head: 3
+            },
+            tint: 0xf3722c,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            statusEffects: [{
+                kind: "burn",
+                damagePerTick: 1,
+                tickIntervalMs: 700,
+                durationMs: 3500,
+                maxStacks: 2
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "bounty-rock-bow",
+        name: "Bounty Rock",
+        description: "A marked stone that tags enemies for a fatter payout after the hit.",
+        cost: 115,
+        bowTint: 0xf9c74f,
+        attackStyle: "throw",
+        powerMultiplier: 0.5,
+        accentColor: 0xf9c74f,
+        placeholderLabel: "Cash",
+        projectile: {
+            id: "bounty-rock-shot",
+            texture: "rock",
+            scale: 0.18,
+            lifetimeMs: 6500,
+            maxActive: 16,
+            damage: {
+                body: 2,
+                head: 3
+            },
+            tint: 0xf9c74f,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            statusEffects: [{
+                kind: "bounty",
+                rewardMultiplierPerStack: 0.35,
+                maxStacks: 3
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "crusher-rock-bow",
+        name: "Crusher Rock",
+        description: "The heaviest throw in the lineup. Slow to launch, but every hit lands like a brick.",
+        cost: 145,
+        bowTint: 0x6c757d,
+        attackStyle: "throw",
+        powerMultiplier: 0.42,
+        accentColor: 0x6c757d,
+        placeholderLabel: "Heavy",
+        projectile: {
+            id: "crusher-rock-shot",
+            texture: "rock",
+            scale: 0.22,
+            lifetimeMs: 7000,
+            maxActive: 14,
+            damage: {
+                body: 4,
+                head: 6
+            },
+            tint: 0xd9d9d9,
             hitboxShape: "circle",
             sticksToTargets: false,
             minImpactSpeed: 0
@@ -779,7 +895,8 @@ const TIMED_POWERUP_DEFINITIONS: TimedPowerupDefinition[] = [
         shortLabel: "CHG",
         color: 0xffd166,
         textColor: "#1b1b1b",
-        durationMs: 5000
+        durationMs: 5000,
+        chargeRateMultiplier: 2
     },
     {
         id: "timed-heal",
@@ -808,7 +925,7 @@ const TIMED_POWERUP_DEFINITIONS: TimedPowerupDefinition[] = [
         color: 0x7b2cbf,
         textColor: "#ffffff",
         durationMs: 8000,
-        pierceBonus: 2
+        pierceBonus: 1
     }
 ];
 
@@ -820,7 +937,8 @@ const TIMED_POWERUP_DROP_DEFINITIONS: TimedPowerupDefinition[] = [
         shortLabel: "CHG+",
         color: 0xffb703,
         textColor: "#1b1b1b",
-        durationMs: 8000
+        durationMs: 8000,
+        instantCharge: true
     },
     {
         id: "timed-heal-plus",
@@ -849,7 +967,7 @@ const TIMED_POWERUP_DROP_DEFINITIONS: TimedPowerupDefinition[] = [
         color: 0x5a189a,
         textColor: "#ffffff",
         durationMs: 10000,
-        pierceBonus: 4
+        pierceBonus: 2
     }
 ];
 
@@ -1202,15 +1320,25 @@ const MANUAL_LEVEL_DEFINITIONS: ManualLevelDefinition[] = [
         sceneKey: "LevelFive",
         label: "Level 5",
         menuColor: 0xf4a261,
-        nextLevel: "MainMenu",
+        nextLevel: "LevelSix",
         instructions: {
             x: 220,
             y: 170,
-            text: "Ground bruisers rush you on the floor and swing in melee.\nThey are the priority target here.\nRock weapons now use a throw motion instead of the bow pose.",
+            text: "Ground bruisers rush you on the floor and swing in melee.\nSwirl starfish curl around their head, then open up to blast 2 seconds off your active powerups.\nIf you have no active powerups, that pulse hits for 2 damage.\nRock weapons now use a throw motion instead of the bow pose.",
             font: "bold 34px Arial",
             fill: "#ffffff"
         },
         createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1480,
+                y: 500,
+                scale: levelScale - 0.05,
+                health: 5,
+                flip: true,
+                attackInterval: 3600,
+                attackDelay: 1,
+                archetype: SWIRL_STARFISH_ARCHETYPE
+            }),
             createEnemySpawnConfig({
                 x: 1550,
                 y: 900,
@@ -1248,6 +1376,51 @@ const MANUAL_LEVEL_DEFINITIONS: ManualLevelDefinition[] = [
                 flip: true,
                 attackInterval: 2200,
                 attackDelay: 2
+            })
+        ]
+    },
+    {
+        sceneKey: "LevelSix",
+        label: "Level 6",
+        menuColor: 0xff8fab,
+        nextLevel: "MainMenu",
+        instructions: {
+            x: 220,
+            y: 160,
+            text: "Starfish test room.\nTheir middle core is the head.\nWhen they uncurl and pulse, they shave 2 seconds off active powerups.\nIf you have none active, the pulse hits for 2 damage instead.",
+            font: "bold 36px Arial",
+            fill: "#ffffff"
+        },
+        createEnemyConfigs: (levelScale) => [
+            createEnemySpawnConfig({
+                x: 1380,
+                y: 320,
+                scale: levelScale - 0.1,
+                health: 4,
+                flip: true,
+                attackInterval: 4200,
+                attackDelay: 0,
+                archetype: SWIRL_STARFISH_ARCHETYPE
+            }),
+            createEnemySpawnConfig({
+                x: 1620,
+                y: 520,
+                scale: levelScale + 0.05,
+                health: 5,
+                flip: true,
+                attackInterval: 3400,
+                attackDelay: 1,
+                archetype: SWIRL_STARFISH_ARCHETYPE
+            }),
+            createEnemySpawnConfig({
+                x: 1260,
+                y: 700,
+                scale: levelScale + 0.15,
+                health: 6,
+                flip: true,
+                attackInterval: 2800,
+                attackDelay: 2,
+                archetype: SWIRL_STARFISH_ARCHETYPE
             })
         ]
     }
