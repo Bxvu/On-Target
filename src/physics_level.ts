@@ -4,7 +4,27 @@ const LEVEL_IMAGE_ASSETS: Array<[string, string]> = [
     ["aOpponentShortLimb", "armoredOpponent-shortLimb.png"],
     ["aOpponentLeg", "armoredOpponent-leg.png"],
     ["aOpponentArm", "armoredOpponent-arm.png"],
+    ["playerHead", "player-head.png"],
+    ["playerBody", "player-body.png"],
+    ["playerShortLimb", "player-shortLimb.png"],
+    ["playerArm", "player-arm.png"],
+    ["playerLeg", "player-leg.png"],
+    ["amalgamHead", "amalgam-head.png"],
+    ["amalgamBody", "amalgam-body.png"],
+    ["amalgamShortLimb", "amalgam-shortLimb.png"],
+    ["amalgamArm", "amalgam-arm.png"],
+    ["amalgamLeg", "amalgam-leg.png"],
+    ["meleeHead", "melee-head.png"],
+    ["meleeBody", "melee-body.png"],
+    ["meleeShortLimb", "melee-shortLimb.png"],
+    ["meleeArm", "melee-arm.png"],
+    ["meleeLeg", "melee-leg.png"],
+    ["starfishHead", "starfish-head.png"],
+    ["starfishShortLimb", "starfish-shortLimb.png"],
+    ["starfishArm", "starfish-arm.png"],
+    ["starfishLeg", "starfish-leg.png"],
     ["arrow", "arrow.png"],
+    ["grenade", "grenade.png"],
     ["rock", "rock.png"],
     ["bow", "bow.png"],
     ["sword", "sword.png"]
@@ -63,12 +83,22 @@ const TOUCH_FIRE_BUTTON_RADIUS = 118;
 const SWAP_WEAPON_BUTTON_CENTER = { x: 150, y: 470 };
 const GRENADE_EXPLOSION_RING_COLOR = 0xff9f1c;
 const GRENADE_EXPLOSION_FILL_COLOR = 0xffd166;
+const SCENIC_CLOUDS = [
+    { x: 210, y: 140, scale: 1.1, alpha: 0.75 },
+    { x: 560, y: 230, scale: 0.9, alpha: 0.58 },
+    { x: 980, y: 120, scale: 1.35, alpha: 0.7 },
+    { x: 1430, y: 205, scale: 1.05, alpha: 0.62 },
+    { x: 1720, y: 110, scale: 0.82, alpha: 0.68 }
+];
 
 class LevelScene extends LooseScene {
     init(data: LevelInitData = {}): void {
         this.levelData = data;
         this.startTime = 0;
         this.sceneDuration = 0;
+        this.summaryScheduled = false;
+        this.summaryShown = false;
+        this.summaryFallbackTimeout = undefined;
     }
 
     preload(): void {
@@ -88,6 +118,11 @@ class LevelScene extends LooseScene {
         this.refreshRuntimeProfileSettings(true);
         this.events.once("shutdown", () => {
             this.destroyTouchControls();
+
+            if (this.summaryFallbackTimeout != null) {
+                window.clearTimeout(this.summaryFallbackTimeout);
+                this.summaryFallbackTimeout = undefined;
+            }
         });
     }
 
@@ -148,6 +183,13 @@ class LevelScene extends LooseScene {
         this.touchControlPointerUpHandler = undefined;
         this.hudPointerIds = new Set<number>();
         this.hudPointerUpHandler = undefined;
+        this.summaryScheduled = false;
+        this.summaryShown = false;
+
+        if (this.summaryFallbackTimeout != null) {
+            window.clearTimeout(this.summaryFallbackTimeout);
+            this.summaryFallbackTimeout = undefined;
+        }
 
         this.events.removeAllListeners("levelEnd");
         this.events.removeAllListeners("arrowHit");
@@ -349,17 +391,7 @@ class LevelScene extends LooseScene {
         this.bow.add([nextWeaponSprite, nextAimSprite]);
 
         if (attackStyle === "bow") {
-            this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
-                pointA: { x: 0, y: 0 },
-                pointB: { x: 0, y: 0 },
-                render: { visible: false }
-            });
-
-            this.leftArmBowConstraint = this.matter.add.constraint(this.player.parts.leftLowerArm, this.bowSprite.body, 0, 0.001, {
-                pointA: { x: 0, y: 0 },
-                pointB: { x: 0, y: 0 },
-                render: { visible: false }
-            });
+            this.attachBowConstraints();
         }
 
         this.syncPlayerAttackAnchor();
@@ -730,17 +762,7 @@ class LevelScene extends LooseScene {
         this.refreshPlayerStatusDisplay();
 
         if (attackStyle === "bow") {
-            this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
-                pointA: { x: 0, y: 0 },
-                pointB: { x: 0, y: 0 },
-                render: { visible: false }
-            });
-
-            this.leftArmBowConstraint = this.matter.add.constraint(this.player.parts.leftLowerArm, this.bowSprite.body, 0, 0.001, {
-                pointA: { x: 0, y: 0 },
-                pointB: { x: 0, y: 0 },
-                render: { visible: false }
-            });
+            this.attachBowConstraints();
         }
         else {
             this.rightArmBowConstraint = undefined;
@@ -748,6 +770,28 @@ class LevelScene extends LooseScene {
         }
 
         this.syncPlayerAttackAnchor();
+    }
+
+    attachBowConstraints(): void {
+        if (!this.player || !this.bowSprite?.body || this.playerLoadout.weapon.attackStyle !== "bow") {
+            return;
+        }
+
+        if (!this.rightArmBowConstraint) {
+            this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
+                pointA: { x: 0, y: 0 },
+                pointB: { x: 0, y: 0 },
+                render: { visible: false }
+            });
+        }
+
+        if (!this.leftArmBowConstraint) {
+            this.leftArmBowConstraint = this.matter.add.constraint(this.player.parts.leftLowerArm, this.bowSprite.body, 0, 0.001, {
+                pointA: { x: 0, y: 0 },
+                pointB: { x: 0, y: 0 },
+                render: { visible: false }
+            });
+        }
     }
 
     detachBowConstraints(): void {
@@ -772,7 +816,60 @@ class LevelScene extends LooseScene {
                 mask: PLAYER_RAGDOLL_COLLISION_CATEGORY
             }
         });
-        this.add.rectangle(WORLD_BOUNDS.ground.x, WORLD_BOUNDS.ground.y, WORLD_BOUNDS.ground.width, WORLD_BOUNDS.ground.height, 0x01FFA3);
+        this.drawScenery();
+    }
+
+    drawScenery(): void {
+        const groundTop = WORLD_BOUNDS.ground.y - (WORLD_BOUNDS.ground.height / 2);
+        const sky = this.add.graphics().setDepth(-25);
+        sky.fillGradientStyle(0x8ecae6, 0x8ecae6, 0xe6f7ff, 0xe6f7ff, 1);
+        sky.fillRect(0, 0, 1920, 1080);
+        sky.fillStyle(0xfdfcf2, 0.18);
+        sky.fillEllipse(1580, 180, 280, 110);
+        sky.fillStyle(0xffffff, 0.12);
+        sky.fillEllipse(310, 250, 220, 90);
+
+        const cloudGraphics = this.add.graphics().setDepth(-22);
+        SCENIC_CLOUDS.forEach((cloud) => {
+            const width = 150 * cloud.scale;
+            const height = 54 * cloud.scale;
+            cloudGraphics.fillStyle(0xd9ecf7, cloud.alpha * 0.55);
+            cloudGraphics.fillEllipse(cloud.x + (18 * cloud.scale), cloud.y + (20 * cloud.scale), width * 1.12, height * 0.8);
+            cloudGraphics.fillStyle(0xffffff, cloud.alpha);
+            cloudGraphics.fillEllipse(cloud.x - (44 * cloud.scale), cloud.y + (8 * cloud.scale), width * 0.56, height * 0.82);
+            cloudGraphics.fillEllipse(cloud.x, cloud.y - (6 * cloud.scale), width * 0.72, height);
+            cloudGraphics.fillEllipse(cloud.x + (52 * cloud.scale), cloud.y + (10 * cloud.scale), width * 0.62, height * 0.76);
+        });
+
+        const ground = this.add.graphics().setDepth(-15);
+        ground.fillStyle(0x68b04d, 1);
+        ground.fillRect(0, 886, 1920, 194);
+        ground.fillStyle(0x7bc95f, 1);
+        ground.fillRect(0, 846, 1920, 44);
+        ground.fillStyle(0x4f8c3f, 0.5);
+        ground.fillRect(0, 890, 1920, 12);
+
+        const grass = this.add.graphics().setDepth(-12);
+        grass.lineStyle(3, 0x3f7f2b, 0.95);
+
+        for (let x = 16; x <= 1910; x += 22) {
+            const bladeHeight = 10 + ((x / 22) % 4) * 4;
+            grass.beginPath();
+            grass.moveTo(x, 852);
+            grass.lineTo(x - 4, 852 - bladeHeight);
+            grass.moveTo(x, 852);
+            grass.lineTo(x + 3, 852 - (bladeHeight + 4));
+            grass.strokePath();
+        }
+
+        const groundOutline = this.add.graphics().setDepth(-11);
+        groundOutline.fillStyle(0x90f06b, 0.22);
+        groundOutline.fillRect(0, groundTop - 4, 1920, 8);
+        groundOutline.lineStyle(4, 0x6fe34d, 0.95);
+        groundOutline.beginPath();
+        groundOutline.moveTo(0, groundTop);
+        groundOutline.lineTo(1920, groundTop);
+        groundOutline.strokePath();
     }
 
     hasActiveTimedPowerup(kind: TimedPowerupKind): boolean {
@@ -1243,6 +1340,11 @@ class LevelScene extends LooseScene {
     }
 
     handlePlayerCharge(): void {
+        if (this.isLevelEnding) {
+            this.cancelPlayerCharge();
+            return;
+        }
+
         const scaleMagnitude = Math.abs(this.levelScale) || 1;
         const chargeRateMultiplier = (this.player?.chargeRateMultiplier ?? 1)
             * this.getRapidChargeRateMultiplier()
@@ -1357,6 +1459,11 @@ class LevelScene extends LooseScene {
     }
 
     updateBowAim(delta: number): void {
+        if (this.isLevelEnding) {
+            this.detachBowConstraints();
+            return;
+        }
+
         const playerActionComplete = this.advanceCombatAction(this.player, delta);
         const chestPosition = this.player.parts.chest.position;
         const aimAngle = Phaser.Math.Angle.Between(chestPosition.x, chestPosition.y, this.mousex, this.mousey);
@@ -1373,6 +1480,8 @@ class LevelScene extends LooseScene {
             this.updateThrownWeaponPose(aimAngle);
             return;
         }
+
+        this.attachBowConstraints();
 
         if (this.rightArmBowConstraint) {
             this.rightArmBowConstraint.pointB.x = this.mousex;
@@ -2262,13 +2371,13 @@ class LevelScene extends LooseScene {
         this.canCharge = false;
         this.releaseBow();
 
-        this.time.delayedCall(5000, () => {
-            this.showSummary();
-        });
+        this.scheduleSummary(5000);
     }
 
     releaseBow(): void {
         const releasePosition = this.player.parts.rightLowerArm.position;
+
+        this.detachBowConstraints();
 
         this.bow.list.forEach((item: MatterImage) => {
             item.x = releasePosition.x;
@@ -2278,6 +2387,8 @@ class LevelScene extends LooseScene {
         });
 
         this.bow.removeAll(false);
+        this.bowSprite = undefined;
+        this.playerAimSprite = undefined;
     }
 
     handleWaveVictory(humanoidsDefeated: boolean): void {
@@ -2286,13 +2397,14 @@ class LevelScene extends LooseScene {
         }
 
         this.isLevelEnding = true;
+        this.canCharge = false;
+        this.cancelPlayerCharge();
+        this.detachBowConstraints();
 
         if (!this.isWaveModeScene()) {
             this.events.emit("levelEnd", { victory: true });
             this.addSlowdown();
-            this.time.delayedCall(5000, () => {
-                this.showSummary();
-            });
+            this.scheduleSummary(5000);
         }
         else {
             this.addSlowdown();
@@ -2300,8 +2412,24 @@ class LevelScene extends LooseScene {
                 this.events.emit("nextWave", { victory: true });
                 this.matter.world.engine.timing.timeScale = 1;
                 this.isLevelEnding = false;
+                this.canCharge = true;
+                this.attachBowConstraints();
             });
         }
+    }
+
+    scheduleSummary(delayMs: number): void {
+        if (this.summaryScheduled || this.summaryShown) {
+            return;
+        }
+
+        this.summaryScheduled = true;
+        this.time.delayedCall(delayMs, () => {
+            this.showSummary();
+        });
+        this.summaryFallbackTimeout = window.setTimeout(() => {
+            this.showSummary();
+        }, delayMs + 100);
     }
 
     addSlowdown(): void {
@@ -2329,13 +2457,27 @@ class LevelScene extends LooseScene {
     }
 
     showSummary(): void {
+        if (this.summaryShown || this.scene.isActive("SummaryScene")) {
+            return;
+        }
+
+        this.summaryShown = true;
+        this.summaryScheduled = false;
+
+        if (this.summaryFallbackTimeout != null) {
+            window.clearTimeout(this.summaryFallbackTimeout);
+            this.summaryFallbackTimeout = undefined;
+        }
+
         this.humanoids.forEach((humanoid: RagdollPerson) => {
             humanoid.linkedSprites.forEach((sprite) => {
-                sprite.setAlpha(0.01);
+                if (sprite.active) {
+                    sprite.setAlpha(0.01);
+                }
             });
         });
 
-        this.scene.launch("SummaryScene", {
+        this.scene.start("SummaryScene", {
             arrowsHit: this.arrowsHit,
             arrowsShot: this.arrowsShot,
             health: this.player.health,
@@ -2347,8 +2489,6 @@ class LevelScene extends LooseScene {
             currencyEarned: this.currencyEarned,
             totalCurrency: this.playerProfile.currency
         } as SummarySceneData);
-
-        this.scene.pause();
     }
 
     constructHumanoid(x: number, y: number, scale: number, staticBody: boolean, health: number, flip: boolean, attackInterval: number, delay: number): RagdollPerson {
@@ -2514,7 +2654,8 @@ class LevelScene extends LooseScene {
         return this.assignCombatId(this.ragdollFactory.createPlayer(x, y, scale, {
             staticBody,
             health,
-            flip
+            flip,
+            bodyProfile: "player"
         }));
     }
 

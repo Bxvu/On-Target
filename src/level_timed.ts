@@ -113,9 +113,7 @@ class TimedLevel extends LevelScene {
 
             this.kills = count;
             this.addSlowdown();
-            this.time.delayedCall(5000, () => {
-                this.showSummary();
-            });
+            this.scheduleSummary(5000);
         }
     }
 
@@ -136,6 +134,7 @@ class TimedLevel extends LevelScene {
                     scale: weirdAmalgamScale,
                     health: this.getScaledAmalgamHealth(1),
                     flip: true,
+                    archetype: AMALGAM_ENEMY_ARCHETYPE,
                     attackInterval: Math.random() * 2500 + 750,
                     attackDelay: Math.random() * 10 + 15
                 }));

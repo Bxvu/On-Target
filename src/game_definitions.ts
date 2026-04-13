@@ -426,6 +426,11 @@ const STANDARD_ENEMY_ARCHETYPE: EnemyArchetype = {
     currencyReward: 10
 };
 
+const AMALGAM_ENEMY_ARCHETYPE: EnemyArchetype = {
+    ...STANDARD_ENEMY_ARCHETYPE,
+    bodyProfile: "amalgam"
+};
+
 const LEVEL_FOUR_BOSS_ARCHETYPE: EnemyArchetype = {
     ...STANDARD_ENEMY_ARCHETYPE,
     id: "level-four-boss",
@@ -477,6 +482,7 @@ const LEVEL_FOUR_BOSS_ARCHETYPE: EnemyArchetype = {
 const GROUND_BRUISER_ARCHETYPE: EnemyArchetype = {
     id: "ground-bruiser",
     behavior: "melee",
+    bodyProfile: "melee",
     melee: {
         moveSpeed: 0.18,
         preferredRange: 130,

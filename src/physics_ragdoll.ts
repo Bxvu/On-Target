@@ -6,6 +6,46 @@ interface HumanoidProfileDefinition {
     attackTelegraphPart: BodyPartName;
 }
 
+function createHumanoidSprites(textures: {
+    head: string;
+    chest: string;
+    shortLimb: string;
+    arm: string;
+    leg: string;
+}): HumanoidSpriteConfig[] {
+    return [
+        { bodyName: "head", texture: textures.head, scale: 0.22 },
+        { bodyName: "chest", texture: textures.chest, scale: 0.24 },
+        { bodyName: "rightUpperArm", texture: textures.shortLimb, scale: 0.24 },
+        { bodyName: "rightLowerArm", texture: textures.arm, scale: 0.24 },
+        { bodyName: "leftUpperArm", texture: textures.shortLimb, scale: 0.24 },
+        { bodyName: "leftLowerArm", texture: textures.arm, scale: 0.24 },
+        { bodyName: "rightUpperLeg", texture: textures.shortLimb, scale: 0.24 },
+        { bodyName: "rightLowerLeg", texture: textures.leg, scale: 0.24 },
+        { bodyName: "leftUpperLeg", texture: textures.shortLimb, scale: 0.24 },
+        { bodyName: "leftLowerLeg", texture: textures.leg, scale: 0.24 }
+    ];
+}
+
+function createStarfishSprites(textures: {
+    head: string;
+    shortLimb: string;
+    arm: string;
+    leg: string;
+}): HumanoidSpriteConfig[] {
+    return [
+        { bodyName: "head", texture: textures.head, scale: 0.34 },
+        { bodyName: "rightUpperArm", texture: textures.shortLimb, scale: 0.26 },
+        { bodyName: "rightLowerArm", texture: textures.arm, scale: 0.26 },
+        { bodyName: "leftUpperArm", texture: textures.shortLimb, scale: 0.26 },
+        { bodyName: "leftLowerArm", texture: textures.arm, scale: 0.26 },
+        { bodyName: "rightUpperLeg", texture: textures.shortLimb, scale: 0.26 },
+        { bodyName: "rightLowerLeg", texture: textures.leg, scale: 0.26 },
+        { bodyName: "leftUpperLeg", texture: textures.shortLimb, scale: 0.26 },
+        { bodyName: "leftLowerLeg", texture: textures.leg, scale: 0.26 }
+    ];
+}
+
 const DEFAULT_HUMANOID_PROFILE: HumanoidProfileDefinition = {
     parts: [
         // These values were tuned to preserve the humanoid silhouette of the ragdolls.
@@ -32,20 +72,48 @@ const DEFAULT_HUMANOID_PROFILE: HumanoidProfileDefinition = {
         { bodyA: "head", bodyB: "chest", length: () => 0, stiffness: 0.6, pointA: { x: 0, y: 25 }, pointB: { x: 0, y: -35 } },
         { bodyA: "leftLowerLeg", bodyB: "rightLowerLeg", length: (scale) => 50 * (scale * 0.4), stiffness: 0.01 }
     ],
-    sprites: [
-        { bodyName: "head", texture: "aOpponentHead", scale: 0.22 },
-        { bodyName: "chest", texture: "aOpponentBody", scale: 0.24 },
-        { bodyName: "rightUpperArm", texture: "aOpponentShortLimb", scale: 0.24 },
-        { bodyName: "rightLowerArm", texture: "aOpponentArm", scale: 0.24 },
-        { bodyName: "leftUpperArm", texture: "aOpponentShortLimb", scale: 0.24 },
-        { bodyName: "leftLowerArm", texture: "aOpponentArm", scale: 0.24 },
-        { bodyName: "rightUpperLeg", texture: "aOpponentShortLimb", scale: 0.24 },
-        { bodyName: "rightLowerLeg", texture: "aOpponentLeg", scale: 0.24 },
-        { bodyName: "leftUpperLeg", texture: "aOpponentShortLimb", scale: 0.24 },
-        { bodyName: "leftLowerLeg", texture: "aOpponentLeg", scale: 0.24 }
-    ],
+    sprites: createHumanoidSprites({
+        head: "aOpponentHead",
+        chest: "aOpponentBody",
+        shortLimb: "aOpponentShortLimb",
+        arm: "aOpponentArm",
+        leg: "aOpponentLeg"
+    }),
     throwingArm: "leftLowerArm",
     attackTelegraphPart: "leftLowerArm"
+};
+
+const AMALGAM_HUMANOID_PROFILE: HumanoidProfileDefinition = {
+    ...DEFAULT_HUMANOID_PROFILE,
+    sprites: createHumanoidSprites({
+        head: "amalgamHead",
+        chest: "amalgamBody",
+        shortLimb: "amalgamShortLimb",
+        arm: "amalgamArm",
+        leg: "amalgamLeg"
+    })
+};
+
+const PLAYER_HUMANOID_PROFILE: HumanoidProfileDefinition = {
+    ...DEFAULT_HUMANOID_PROFILE,
+    sprites: createHumanoidSprites({
+        head: "playerHead",
+        chest: "playerBody",
+        shortLimb: "playerShortLimb",
+        arm: "playerArm",
+        leg: "playerLeg"
+    })
+};
+
+const MELEE_HUMANOID_PROFILE: HumanoidProfileDefinition = {
+    ...DEFAULT_HUMANOID_PROFILE,
+    sprites: createHumanoidSprites({
+        head: "meleeHead",
+        chest: "meleeBody",
+        shortLimb: "meleeShortLimb",
+        arm: "meleeArm",
+        leg: "meleeLeg"
+    })
 };
 
 const HUMANOID_BODY_ORDER: BodyPartName[] = [
@@ -85,23 +153,21 @@ const STARFISH_HUMANOID_PROFILE: HumanoidProfileDefinition = {
         { bodyA: "rightUpperLeg", bodyB: "rightLowerLeg", length: (scale) => 8 * scale, stiffness: 0.78, pointA: { x: 0, y: 14 }, pointB: { x: 0, y: -16 } },
         { bodyA: "head", bodyB: "chest", length: (scale) => 6 * scale, stiffness: 0.9, pointA: { x: 0, y: 14 }, pointB: { x: 0, y: -6 } }
     ],
-    sprites: [
-        { bodyName: "head", texture: "aOpponentHead", scale: 0.34 },
-        { bodyName: "rightUpperArm", texture: "aOpponentShortLimb", scale: 0.26 },
-        { bodyName: "rightLowerArm", texture: "aOpponentArm", scale: 0.26 },
-        { bodyName: "leftUpperArm", texture: "aOpponentShortLimb", scale: 0.26 },
-        { bodyName: "leftLowerArm", texture: "aOpponentArm", scale: 0.26 },
-        { bodyName: "rightUpperLeg", texture: "aOpponentShortLimb", scale: 0.26 },
-        { bodyName: "rightLowerLeg", texture: "aOpponentLeg", scale: 0.26 },
-        { bodyName: "leftUpperLeg", texture: "aOpponentShortLimb", scale: 0.26 },
-        { bodyName: "leftLowerLeg", texture: "aOpponentLeg", scale: 0.26 }
-    ],
+    sprites: createStarfishSprites({
+        head: "starfishHead",
+        shortLimb: "starfishShortLimb",
+        arm: "starfishArm",
+        leg: "starfishLeg"
+    }),
     throwingArm: "head",
     attackTelegraphPart: "head"
 };
 
 const HUMANOID_PROFILES: Record<HumanoidBodyProfile, HumanoidProfileDefinition> = {
     default: DEFAULT_HUMANOID_PROFILE,
+    amalgam: AMALGAM_HUMANOID_PROFILE,
+    player: PLAYER_HUMANOID_PROFILE,
+    melee: MELEE_HUMANOID_PROFILE,
     starfish: STARFISH_HUMANOID_PROFILE
 };
 

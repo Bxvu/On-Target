@@ -34,7 +34,7 @@ type TimedPowerupKind = "rapidCharge" | "heal" | "damage" | "pierce";
 type WeaponAttackStyle = "bow" | "throw";
 type EnemyBehaviorKind = "ranged" | "melee";
 type CombatActionKind = "idle" | "charge" | "throw" | "walk" | "telegraph" | "meleeWindup" | "meleeRecover" | "dead";
-type HumanoidBodyProfile = "default" | "starfish";
+type HumanoidBodyProfile = "default" | "amalgam" | "player" | "melee" | "starfish";
 type RagdollPartMap = Record<BodyPartName, MatterBody>;
 type RagdollSpriteMap = Partial<Record<BodyPartName, LinkedSprite>>;
 
