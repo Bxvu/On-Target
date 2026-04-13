@@ -75,6 +75,7 @@ function createWeaponProjectile(config: {
     shrapnelCount?: number;
     shrapnelSpeedMin?: number;
     shrapnelSpeedMax?: number;
+    shrapnelBursts?: ShrapnelBurstConfig[];
 }): ProjectileConfig {
     return {
         id: config.id,
@@ -100,7 +101,12 @@ function createWeaponProjectile(config: {
         shrapnelProjectileKind: config.shrapnelProjectileKind,
         shrapnelCount: config.shrapnelCount,
         shrapnelSpeedMin: config.shrapnelSpeedMin,
-        shrapnelSpeedMax: config.shrapnelSpeedMax
+        shrapnelSpeedMax: config.shrapnelSpeedMax,
+        shrapnelBursts: config.shrapnelBursts?.map((burst) => ({
+            ...burst,
+            statusEffects: burst.statusEffects?.map((effect) => ({ ...effect })),
+            explosionStatusEffects: burst.explosionStatusEffects?.map((effect) => ({ ...effect }))
+        }))
     };
 }
 
@@ -142,42 +148,45 @@ function createWeaponDefinition(config: {
     name: string;
     description: string;
     cost: number;
+    shotCurrencyCost?: number;
     bowTint: number;
     attackStyle?: WeaponAttackStyle;
     chargeRateMultiplier?: number;
     powerMultiplier: number;
     accentColor: number;
     placeholderLabel: string;
-        projectile: {
-            id: string;
-            texture?: string;
-            scale: number;
-            lifetimeMs: number;
-            maxActive: number;
-            damage: DamageProfile;
-            tint: number;
-            pierceCount?: number;
-            statusEffects?: EnemyStatusEffectConfig[];
-            hitboxShape?: ProjectileHitboxShape;
-            sticksToTargets?: boolean;
-            minImpactSpeed?: number;
-            healPlayerOnHit?: number;
-            healPlayerOnKill?: number;
-            explosionRadius?: number;
-            explosionMaxDamage?: number;
-            explosionMinDamage?: number;
-            explosionStatusEffects?: EnemyStatusEffectConfig[];
-            shrapnelProjectileKind?: ShrapnelProjectileKind;
-            shrapnelCount?: number;
-            shrapnelSpeedMin?: number;
-            shrapnelSpeedMax?: number;
-        };
+    projectile: {
+        id: string;
+        texture?: string;
+        scale: number;
+        lifetimeMs: number;
+        maxActive: number;
+        damage: DamageProfile;
+        tint: number;
+        pierceCount?: number;
+        statusEffects?: EnemyStatusEffectConfig[];
+        hitboxShape?: ProjectileHitboxShape;
+        sticksToTargets?: boolean;
+        minImpactSpeed?: number;
+        healPlayerOnHit?: number;
+        healPlayerOnKill?: number;
+        explosionRadius?: number;
+        explosionMaxDamage?: number;
+        explosionMinDamage?: number;
+        explosionStatusEffects?: EnemyStatusEffectConfig[];
+        shrapnelProjectileKind?: ShrapnelProjectileKind;
+        shrapnelCount?: number;
+        shrapnelSpeedMin?: number;
+        shrapnelSpeedMax?: number;
+        shrapnelBursts?: ShrapnelBurstConfig[];
+    };
 }): WeaponDefinition {
     return {
         id: config.id,
         name: config.name,
         description: config.description,
         cost: config.cost,
+        shotCurrencyCost: config.shotCurrencyCost ?? 0,
         bowTexture: "bow",
         bowTint: config.bowTint,
         attackStyle: config.attackStyle ?? "bow",
@@ -214,6 +223,14 @@ function describeEnemyStatusEffect(effect: EnemyStatusEffectConfig): string {
 
 function getProjectileStatusSummary(projectile: ProjectileConfig): string[] {
     const summary: string[] = [];
+    const shrapnelBursts = projectile.shrapnelBursts?.length
+        ? projectile.shrapnelBursts
+        : (projectile.shrapnelCount && projectile.shrapnelProjectileKind
+            ? [{
+                projectileKind: projectile.shrapnelProjectileKind,
+                count: projectile.shrapnelCount
+            }]
+            : []);
 
     if (projectile.healPlayerOnHit && projectile.healPlayerOnHit > 0) {
         summary.push(`Heal: +${projectile.healPlayerOnHit} on hit`);
@@ -231,8 +248,8 @@ function getProjectileStatusSummary(projectile: ProjectileConfig): string[] {
         summary.push(`Explosion: ${projectile.explosionMaxDamage}-${projectile.explosionMinDamage} in ${Math.round(projectile.explosionRadius)}px`);
     }
 
-    if (projectile.shrapnelCount && projectile.shrapnelCount > 0 && projectile.shrapnelProjectileKind) {
-        summary.push(`Shrapnel: ${projectile.shrapnelCount} ${projectile.shrapnelProjectileKind}s`);
+    if (shrapnelBursts.length > 0) {
+        summary.push(`Burst: ${shrapnelBursts.map((burst: ShrapnelBurstConfig) => `${burst.count} ${burst.projectileKind}s`).join(" | ")}`);
     }
 
     if (projectile.statusEffects && projectile.statusEffects.length > 0) {
@@ -501,6 +518,74 @@ const SWIRL_STARFISH_ARCHETYPE: EnemyArchetype = {
     currencyReward: 24
 };
 
+const ALL_STATUS_EFFECTS: EnemyStatusEffectConfig[] = [{
+    kind: "bounty",
+    rewardMultiplierPerStack: 1,
+    maxStacks: 1000
+},
+{
+    kind: "jam",
+    attackIntervalMultiplierPerStack: 0.3,
+    throwForceReductionPerStack: 0.5,
+    durationMs: 10000,
+    maxStacks: 1000
+},
+{
+    kind: "burn",
+    damagePerTick: 1,
+    tickIntervalMs: 200,
+    durationMs: 1000,
+    maxStacks: 1000
+},
+{
+    kind: "scatter",
+    aimSpreadMultiplierPerStack: 0.35,
+    throwForceReductionPerStack: 0.15,
+    durationMs: 10000,
+    maxStacks: 1000
+}];
+
+const HIGH_ROLLER_ARROW_BURST_EFFECTS: EnemyStatusEffectConfig[] = [{
+    kind: "bounty",
+    rewardMultiplierPerStack: 0.35,
+    maxStacks: 5
+},
+{
+    kind: "burn",
+    damagePerTick: 1,
+    tickIntervalMs: 650,
+    durationMs: 3200,
+    maxStacks: 3
+}];
+
+const HIGH_ROLLER_ROCK_BURST_EFFECTS: EnemyStatusEffectConfig[] = [{
+    kind: "scatter",
+    aimSpreadMultiplierPerStack: 0.3,
+    throwForceReductionPerStack: 0.12,
+    durationMs: 7000,
+    maxStacks: 3
+},
+{
+    kind: "jam",
+    attackIntervalMultiplierPerStack: 0.28,
+    throwForceReductionPerStack: 0.12,
+    durationMs: 7000,
+    maxStacks: 3
+}];
+
+const HIGH_ROLLER_GRENADE_BURST_EFFECTS: EnemyStatusEffectConfig[] = [{
+    kind: "burn",
+    damagePerTick: 1,
+    tickIntervalMs: 800,
+    durationMs: 2600,
+    maxStacks: 2
+},
+{
+    kind: "bounty",
+    rewardMultiplierPerStack: 0.25,
+    maxStacks: 4
+}];
+
 
 // Add new weapons here. One entry is all the shop and gameplay need.
 const WEAPON_CATALOG: WeaponDefinition[] = [
@@ -586,35 +671,88 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
                 head: 20
             },
             tint: 0x94d2bd,
-            statusEffects: [{
-                kind: "bounty",
-                rewardMultiplierPerStack: 1,
-                maxStacks: 1000
-            },
-            {
-                kind: "jam",
-                attackIntervalMultiplierPerStack: 0.3,
-                throwForceReductionPerStack: 0.5,
-                durationMs: 10000,
-                maxStacks: 1000
-            },
-            {
-                kind: "burn",
-                damagePerTick: 1,
-                tickIntervalMs: 200,
-                durationMs: 1000,
-                maxStacks: 1000
-            },
-            {
-                kind: "scatter",
-                aimSpreadMultiplierPerStack: 0.35,
-                throwForceReductionPerStack: 0.15,
-                durationMs: 10000,
-                maxStacks: 1000
-            }],
+            statusEffects: ALL_STATUS_EFFECTS,
             healPlayerOnHit: 1,
             healPlayerOnKill: 5,
             sticksToTargets: false
+        }
+    }),
+    createWeaponDefinition({
+        id: "high-roller-bow",
+        name: "High Roller Bow",
+        description: "A premium curse bow that applies every status effect, but each arrow burns $500. Heavy body shots and brutal headshots make every shot count.",
+        cost: 250,
+        shotCurrencyCost: 500,
+        bowTint: 0xe9c46a,
+        powerMultiplier: 1.1,
+        accentColor: 0xe9c46a,
+        placeholderLabel: "All-In",
+        projectile: {
+            id: "high-roller-arrow",
+            scale: 0.18,
+            lifetimeMs: 7600,
+            maxActive: 18,
+            damage: {
+                body: 5,
+                head: 9
+            },
+            tint: 0xe9c46a,
+            statusEffects: ALL_STATUS_EFFECTS,
+            healPlayerOnHit: 1,
+            healPlayerOnKill: 5,
+            sticksToTargets: true
+        }
+    }),
+    createWeaponDefinition({
+        id: "high-roller-grenade",
+        name: "High Roller Grenade",
+        description: "A gilded bankroll bomb with a smaller opener blast that showers arrows, rocks, and mini-grenades. Every throw costs $500, but the follow-up payloads pile on stacked debuffs.",
+        cost: 325,
+        shotCurrencyCost: 500,
+        bowTint: 0xd4a017,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.34,
+        powerMultiplier: 0.6,
+        accentColor: 0xd4a017,
+        placeholderLabel: "Jackpot",
+        projectile: {
+            id: "high-roller-grenade-shot",
+            texture: "grenade",
+            scale: 0.19,
+            lifetimeMs: 7200,
+            maxActive: 8,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0xd4a017,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 145,
+            explosionMaxDamage: 3,
+            explosionMinDamage: 1,
+            shrapnelBursts: [{
+                projectileKind: "arrow",
+                count: 3,
+                speedMin: 18,
+                speedMax: 26,
+                statusEffects: HIGH_ROLLER_ARROW_BURST_EFFECTS
+            },
+            {
+                projectileKind: "rock",
+                count: 3,
+                speedMin: 14,
+                speedMax: 20,
+                statusEffects: HIGH_ROLLER_ROCK_BURST_EFFECTS
+            },
+            {
+                projectileKind: "grenade",
+                count: 2,
+                speedMin: 10,
+                speedMax: 15,
+                explosionStatusEffects: HIGH_ROLLER_GRENADE_BURST_EFFECTS
+            }]
         }
     }),
     createWeaponDefinition({
@@ -988,6 +1126,40 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
             shrapnelCount: 6,
             shrapnelSpeedMin: 17,
             shrapnelSpeedMax: 25
+        }
+    }),
+    createWeaponDefinition({
+        id: "cluster-grenade",
+        name: "Cluster Grenade",
+        description: "A compact opener that breaks into a spread of mini-grenades, trading one big blast for chained follow-up pops.",
+        cost: 225,
+        bowTint: 0xbc6c25,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.4,
+        powerMultiplier: 0.63,
+        accentColor: 0xbc6c25,
+        placeholderLabel: "Chain",
+        projectile: {
+            id: "cluster-grenade-shot",
+            texture: "grenade",
+            scale: 0.19,
+            lifetimeMs: 7000,
+            maxActive: 10,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0xbc6c25,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 155,
+            explosionMaxDamage: 4,
+            explosionMinDamage: 1,
+            shrapnelProjectileKind: "grenade",
+            shrapnelCount: 4,
+            shrapnelSpeedMin: 12,
+            shrapnelSpeedMax: 18
         }
     }),
     createWeaponDefinition({

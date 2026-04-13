@@ -864,6 +864,24 @@ class ShopMenu extends Menu {
         const lines = [
             `Shot Speed: x${weapon.powerMultiplier.toFixed(2)} | Charge: x${weapon.chargeRateMultiplier.toFixed(2)}`
         ];
+        const pushEffectLines = (effects?: EnemyStatusEffectConfig[], prefix = ""): void => {
+            effects?.forEach((effect: EnemyStatusEffectConfig) => {
+                switch (effect.kind) {
+                case "bounty":
+                    lines.push(`${prefix}Bounty: +${formatModifierPercent(effect.rewardMultiplierPerStack ?? 0)} per stack`);
+                    break;
+                case "burn":
+                    lines.push(`${prefix}Burn: ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`);
+                    break;
+                case "scatter":
+                    lines.push(`${prefix}Scatter: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} spread per stack`);
+                    break;
+                case "jam":
+                    lines.push(`${prefix}Slow: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay per stack`);
+                    break;
+                }
+            });
+        };
 
         if (weapon.projectile.explosionRadius && weapon.projectile.explosionMaxDamage != null && weapon.projectile.explosionMinDamage != null) {
             lines.push(
@@ -879,8 +897,26 @@ class ShopMenu extends Menu {
             lines.push(`Pierce: ${weapon.projectile.pierceCount ?? 0}`);
         }
 
-        if (weapon.projectile.shrapnelCount && weapon.projectile.shrapnelProjectileKind) {
-            lines.push(`Shrapnel: ${weapon.projectile.shrapnelCount} ${weapon.projectile.shrapnelProjectileKind}s`);
+        const shrapnelBursts = weapon.projectile.shrapnelBursts?.length
+            ? weapon.projectile.shrapnelBursts
+            : (weapon.projectile.shrapnelCount && weapon.projectile.shrapnelProjectileKind
+                ? [{
+                    projectileKind: weapon.projectile.shrapnelProjectileKind,
+                    count: weapon.projectile.shrapnelCount
+                }]
+                : []);
+
+        if (shrapnelBursts.length > 0) {
+            lines.push(`Burst: ${shrapnelBursts.map((burst: ShrapnelBurstConfig) => `${burst.count} ${burst.projectileKind}s`).join(" | ")}`);
+
+            shrapnelBursts.forEach((burst: ShrapnelBurstConfig) => {
+                const burstLabel = burst.projectileKind === "grenade"
+                    ? "Mini Grenade "
+                    : `${burst.projectileKind.charAt(0).toUpperCase()}${burst.projectileKind.slice(1)} `;
+
+                pushEffectLines(burst.statusEffects, burstLabel);
+                pushEffectLines(burst.explosionStatusEffects, `${burstLabel}Blast `);
+            });
         }
 
         if (weapon.projectile.healPlayerOnHit && weapon.projectile.healPlayerOnHit > 0) {
@@ -891,39 +927,12 @@ class ShopMenu extends Menu {
             lines.push(`Heal: +${weapon.projectile.healPlayerOnKill} on kill`);
         }
 
-        (weapon.projectile.statusEffects ?? []).forEach((effect: EnemyStatusEffectConfig) => {
-            switch (effect.kind) {
-            case "bounty":
-                lines.push(`Bounty: +${formatModifierPercent(effect.rewardMultiplierPerStack ?? 0)} per stack`);
-                break;
-            case "burn":
-                lines.push(`Burn: ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`);
-                break;
-            case "scatter":
-                lines.push(`Scatter: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} spread per stack`);
-                break;
-            case "jam":
-                lines.push(`Slow: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay per stack`);
-                break;
-            }
-        });
+        if (weapon.shotCurrencyCost > 0) {
+            lines.push(`Shot Cost: $${weapon.shotCurrencyCost} per shot`);
+        }
 
-        (weapon.projectile.explosionStatusEffects ?? []).forEach((effect: EnemyStatusEffectConfig) => {
-            switch (effect.kind) {
-            case "burn":
-                lines.push(`Blast Burn: ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`);
-                break;
-            case "bounty":
-                lines.push(`Blast Bounty: +${formatModifierPercent(effect.rewardMultiplierPerStack ?? 0)} per stack`);
-                break;
-            case "scatter":
-                lines.push(`Blast Scatter: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} spread per stack`);
-                break;
-            case "jam":
-                lines.push(`Blast Slow: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay per stack`);
-                break;
-            }
-        });
+        pushEffectLines(weapon.projectile.statusEffects);
+        pushEffectLines(weapon.projectile.explosionStatusEffects, "Blast ");
 
         lines.push(weapon.cost > 0 ? `Price: $${weapon.cost}` : "Included from the start");
 

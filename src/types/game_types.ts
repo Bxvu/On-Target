@@ -26,7 +26,7 @@ type GameText = any;
 type GameObject = any;
 type ProjectileOwner = "player" | "enemy";
 type ProjectileHitboxShape = "rectangle" | "circle";
-type ShrapnelProjectileKind = "rock" | "arrow";
+type ShrapnelProjectileKind = "rock" | "arrow" | "grenade";
 type ShopItemCategory = "bow" | "arrow" | "utility";
 type EnemyArchetypeId = "standard";
 type EnemyStatusEffectKind = "bounty" | "burn" | "scatter" | "jam";
@@ -242,6 +242,15 @@ interface EnemyStatusState {
     tickTimerMs: number;
 }
 
+interface ShrapnelBurstConfig {
+    projectileKind: ShrapnelProjectileKind;
+    count: number;
+    speedMin?: number;
+    speedMax?: number;
+    statusEffects?: EnemyStatusEffectConfig[];
+    explosionStatusEffects?: EnemyStatusEffectConfig[];
+}
+
 interface ProjectileConfig {
     id: string;
     texture: string;
@@ -267,6 +276,7 @@ interface ProjectileConfig {
     shrapnelCount?: number;
     shrapnelSpeedMin?: number;
     shrapnelSpeedMax?: number;
+    shrapnelBursts?: ShrapnelBurstConfig[];
 }
 
 interface EnemyAttackTuning {
@@ -354,6 +364,7 @@ interface WeaponDefinition {
     name: string;
     description: string;
     cost: number;
+    shotCurrencyCost: number;
     bowTexture: string;
     bowTint: number;
     attackStyle: WeaponAttackStyle;

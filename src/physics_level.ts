@@ -127,6 +127,7 @@ class LevelScene extends LooseScene {
         this.kills = 0;
         this.currencyEarned = 0;
         this.overhealDecayTimerMs = 0;
+        this.nextShotCostWarningTime = 0;
         this.activeTimedPowerups = {} as Partial<Record<TimedPowerupKind, ActiveTimedPowerupState>>;
         this.timedPowerups = [] as TimedPowerupPickup[];
 
@@ -201,8 +202,12 @@ class LevelScene extends LooseScene {
     }
 
     refreshEconomyDisplay(): void {
+        const shotCurrencyCost = this.playerLoadout.weapon.shotCurrencyCost ?? 0;
+        const weaponLabel = shotCurrencyCost > 0
+            ? `${this.playerLoadout.weapon.name} (-$${shotCurrencyCost}/shot)`
+            : this.playerLoadout.weapon.name;
         this.currencyDisplay.setText(`Money: $${this.playerProfile.currency}`);
-        this.weaponDisplay.setText(`Weapon: ${this.playerLoadout.weapon.name}`);
+        this.weaponDisplay.setText(`Weapon: ${weaponLabel}`);
     }
 
     createSystemButtons(): void {
@@ -1065,6 +1070,10 @@ class LevelScene extends LooseScene {
     }
 
     firePlayerArrow(power: number): void {
+        if (!this.tryPayForPlayerShot()) {
+            return;
+        }
+
         const aimSpreadMultiplier = this.player.aimSpreadMultiplier ?? 1;
         const throwForceMultiplier = this.player.throwForceMultiplier ?? 1;
         const scatterRadius = Math.max(0, (aimSpreadMultiplier - 1) * PLAYER_SHOT_SCATTER_PIXELS);
@@ -1088,6 +1097,42 @@ class LevelScene extends LooseScene {
             this.spawnedArrows
         );
         this.arrowsShot += 1;
+    }
+
+    tryPayForPlayerShot(): boolean {
+        const shotCurrencyCost = this.playerLoadout.weapon.shotCurrencyCost ?? 0;
+
+        if (shotCurrencyCost <= 0) {
+            return true;
+        }
+
+        if (this.playerProfile.currency < shotCurrencyCost) {
+            this.showShotCostWarning(shotCurrencyCost);
+            return false;
+        }
+
+        this.removePlayerCurrency(shotCurrencyCost);
+        return true;
+    }
+
+    showShotCostWarning(requiredAmount: number): void {
+        if (!this.player?.parts?.chest) {
+            return;
+        }
+
+        const now = this.time.now ?? 0;
+
+        if (now < (this.nextShotCostWarningTime ?? 0)) {
+            return;
+        }
+
+        this.nextShotCostWarningTime = now + 500;
+        this.showTimedPowerupPickupText(
+            `Need $${requiredAmount}`,
+            this.player.parts.chest.position.x,
+            this.player.parts.chest.position.y - 170,
+            0xef476f
+        );
     }
 
     updateBowAim(delta: number): void {
@@ -2285,16 +2330,37 @@ class LevelScene extends LooseScene {
         return arrow;
     }
 
-    createGrenadeShrapnelProjectile(projectileConfig: ProjectileConfig): ProjectileConfig | undefined {
-        switch (projectileConfig.shrapnelProjectileKind) {
+    getProjectileShrapnelBursts(projectileConfig: ProjectileConfig): ShrapnelBurstConfig[] {
+        if (projectileConfig.shrapnelBursts && projectileConfig.shrapnelBursts.length > 0) {
+            return projectileConfig.shrapnelBursts.filter((burst) => (burst.count ?? 0) > 0);
+        }
+
+        if (projectileConfig.shrapnelProjectileKind && (projectileConfig.shrapnelCount ?? 0) > 0) {
+            return [{
+                projectileKind: projectileConfig.shrapnelProjectileKind,
+                count: projectileConfig.shrapnelCount ?? 0,
+                speedMin: projectileConfig.shrapnelSpeedMin,
+                speedMax: projectileConfig.shrapnelSpeedMax
+            }];
+        }
+
+        return [];
+    }
+
+    createGrenadeShrapnelProjectile(projectileConfig: ProjectileConfig, shrapnelBurst?: ShrapnelBurstConfig): ProjectileConfig | undefined {
+        const projectileKind = shrapnelBurst?.projectileKind ?? projectileConfig.shrapnelProjectileKind;
+        const totalShrapnelCount = this.getProjectileShrapnelBursts(projectileConfig)
+            .reduce((total: number, burst: ShrapnelBurstConfig) => total + (burst.count ?? 0), 0);
+
+        switch (projectileKind) {
         case "rock":
             return {
-                id: `${projectileConfig.id}-shrapnel-rock`,
+                id: `${projectileConfig.id}-${projectileKind}-shrapnel`,
                 texture: "rock",
                 scale: 0.13,
                 lifetimeMs: 2200,
                 collisionGroup: projectileConfig.collisionGroup,
-                maxActive: projectileConfig.maxActive + (projectileConfig.shrapnelCount ?? 0),
+                maxActive: projectileConfig.maxActive + totalShrapnelCount,
                 damage: {
                     body: 2,
                     head: 3
@@ -2302,22 +2368,45 @@ class LevelScene extends LooseScene {
                 tint: projectileConfig.tint,
                 hitboxShape: "circle",
                 sticksToTargets: false,
-                minImpactSpeed: 0
+                minImpactSpeed: 0,
+                statusEffects: shrapnelBurst?.statusEffects?.map((effect) => ({ ...effect }))
             };
         case "arrow":
             return {
-                id: `${projectileConfig.id}-shrapnel-arrow`,
+                id: `${projectileConfig.id}-${projectileKind}-shrapnel`,
                 texture: "arrow",
                 scale: 0.14,
                 lifetimeMs: 2400,
                 collisionGroup: projectileConfig.collisionGroup,
-                maxActive: projectileConfig.maxActive + (projectileConfig.shrapnelCount ?? 0),
+                maxActive: projectileConfig.maxActive + totalShrapnelCount,
                 damage: {
                     body: 1,
                     head: 2
                 },
                 tint: projectileConfig.tint,
-                sticksToTargets: true
+                sticksToTargets: true,
+                statusEffects: shrapnelBurst?.statusEffects?.map((effect) => ({ ...effect }))
+            };
+        case "grenade":
+            return {
+                id: `${projectileConfig.id}-${projectileKind}-shrapnel`,
+                texture: "grenade",
+                scale: 0.11,
+                lifetimeMs: 900,
+                collisionGroup: projectileConfig.collisionGroup,
+                maxActive: projectileConfig.maxActive + totalShrapnelCount,
+                damage: {
+                    body: 0,
+                    head: 0
+                },
+                tint: projectileConfig.tint,
+                hitboxShape: "circle",
+                sticksToTargets: false,
+                minImpactSpeed: 1,
+                explosionRadius: 105,
+                explosionMaxDamage: 3,
+                explosionMinDamage: 1,
+                explosionStatusEffects: shrapnelBurst?.explosionStatusEffects?.map((effect) => ({ ...effect }))
             };
         default:
             return undefined;
@@ -2485,15 +2574,23 @@ class LevelScene extends LooseScene {
             );
         });
 
-        const shrapnelCount = arrow.projectileConfig.shrapnelCount ?? 0;
-        const shrapnelConfig = this.createGrenadeShrapnelProjectile(arrow.projectileConfig);
+        const shrapnelBursts = this.getProjectileShrapnelBursts(arrow.projectileConfig);
 
-        if (shrapnelConfig && shrapnelCount > 0) {
-            const speedMin = arrow.projectileConfig.shrapnelSpeedMin ?? 18;
-            const speedMax = Math.max(speedMin, arrow.projectileConfig.shrapnelSpeedMax ?? speedMin);
+        shrapnelBursts.forEach((shrapnelBurst: ShrapnelBurstConfig, burstIndex: number) => {
+            const shrapnelConfig = this.createGrenadeShrapnelProjectile(arrow.projectileConfig, shrapnelBurst);
 
-            for (let shrapnelIndex = 0; shrapnelIndex < shrapnelCount; shrapnelIndex += 1) {
-                const angle = (Math.PI * 2 * shrapnelIndex) / shrapnelCount + Phaser.Math.FloatBetween(-0.18, 0.18);
+            if (!shrapnelConfig || shrapnelBurst.count <= 0) {
+                return;
+            }
+
+            const speedMin = shrapnelBurst.speedMin ?? arrow.projectileConfig.shrapnelSpeedMin ?? 18;
+            const speedMax = Math.max(speedMin, shrapnelBurst.speedMax ?? arrow.projectileConfig.shrapnelSpeedMax ?? speedMin);
+            const burstAngleOffset = (Math.PI * 2 * burstIndex) / Math.max(shrapnelBursts.length, 1);
+
+            for (let shrapnelIndex = 0; shrapnelIndex < shrapnelBurst.count; shrapnelIndex += 1) {
+                const angle = burstAngleOffset
+                    + ((Math.PI * 2 * shrapnelIndex) / shrapnelBurst.count)
+                    + Phaser.Math.FloatBetween(-0.18, 0.18);
                 const speed = Phaser.Math.FloatBetween(speedMin, speedMax);
                 const shrapnel = this.spawnArrow(
                     explosionX,
@@ -2511,7 +2608,14 @@ class LevelScene extends LooseScene {
 
                 arrowList.push(shrapnel);
                 this.time.delayedCall(shrapnelConfig.lifetimeMs, () => {
-                    if (shrapnel) {
+                    if (!shrapnel || !shrapnel.active) {
+                        return;
+                    }
+
+                    if ((shrapnelConfig.explosionRadius ?? 0) > 0) {
+                        this.detonateProjectile(shrapnel, arrowList);
+                    }
+                    else {
                         this.destroyArrow(shrapnel, arrowList);
                     }
                 });
@@ -2520,7 +2624,7 @@ class LevelScene extends LooseScene {
             while (arrowList.length > shrapnelConfig.maxActive) {
                 this.destroyArrow(arrowList[0], arrowList);
             }
-        }
+        });
 
         arrow.alreadyHit = true;
         this.destroyArrowImmediately(arrow, arrowList);
