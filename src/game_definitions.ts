@@ -1490,6 +1490,77 @@ function getWeaponDefinition(weaponId?: string): WeaponDefinition {
     return WEAPON_CATALOG.find((weapon) => weapon.id === weaponId) ?? STARTER_WEAPON;
 }
 
+function resolveWeaponSlotIndex(slotIndex = 0): 0 | 1 {
+    return slotIndex === 1 ? 1 : 0;
+}
+
+function getWeaponSlotLabel(slotIndex = 0): string {
+    return resolveWeaponSlotIndex(slotIndex) === 0 ? "Slot 1" : "Slot 2";
+}
+
+function normalizeSelectedWeaponIds(
+    profile: Partial<PlayerProfile> | null | undefined,
+    unlockedWeaponIds: string[]
+): string[] {
+    const fallbackSelectedWeaponId = unlockedWeaponIds.includes(profile?.selectedWeaponId ?? "")
+        ? profile!.selectedWeaponId!
+        : STARTER_WEAPON.id;
+    const rawSelectedWeaponIds = Array.isArray(profile?.selectedWeaponIds)
+        ? profile!.selectedWeaponIds.filter((weaponId: string) => unlockedWeaponIds.includes(weaponId))
+        : [fallbackSelectedWeaponId];
+    const uniqueSelectedWeaponIds = Array.from(new Set(rawSelectedWeaponIds));
+    const primaryWeaponId = uniqueSelectedWeaponIds[0] ?? fallbackSelectedWeaponId;
+    const secondaryWeaponId = uniqueSelectedWeaponIds.find((weaponId) => weaponId !== primaryWeaponId)
+        ?? unlockedWeaponIds.find((weaponId) => weaponId !== primaryWeaponId)
+        ?? primaryWeaponId;
+
+    return [primaryWeaponId, secondaryWeaponId];
+}
+
+function applyWeaponSlotSelection(profile: PlayerProfile, weaponId: string, slotIndex = 0): string {
+    const weapon = getWeaponDefinition(weaponId);
+    const resolvedSlotIndex = resolveWeaponSlotIndex(slotIndex);
+    const otherSlotIndex = resolvedSlotIndex === 0 ? 1 : 0;
+    const slotLabel = getWeaponSlotLabel(resolvedSlotIndex);
+    const currentSlotWeaponId = profile.selectedWeaponIds[resolvedSlotIndex];
+
+    if (currentSlotWeaponId === weapon.id) {
+        profile.activeWeaponIndex = resolvedSlotIndex;
+        profile.selectedWeaponId = weapon.id;
+        return `${weapon.name} is already in ${slotLabel}.`;
+    }
+
+    if (profile.selectedWeaponIds[otherSlotIndex] === weapon.id) {
+        const displacedWeaponId = profile.selectedWeaponIds[resolvedSlotIndex];
+        profile.selectedWeaponIds[resolvedSlotIndex] = weapon.id;
+        profile.selectedWeaponIds[otherSlotIndex] = displacedWeaponId;
+        profile.activeWeaponIndex = resolvedSlotIndex;
+        profile.selectedWeaponId = weapon.id;
+        return `${weapon.name} moved to ${slotLabel}.`;
+    }
+
+    profile.selectedWeaponIds[resolvedSlotIndex] = weapon.id;
+    profile.activeWeaponIndex = resolvedSlotIndex;
+    profile.selectedWeaponId = weapon.id;
+    return `${weapon.name} set to ${slotLabel}.`;
+}
+
+function canSwapProfileWeapons(profile: PlayerProfile): boolean {
+    return profile.selectedWeaponIds[0] !== profile.selectedWeaponIds[1];
+}
+
+function formatPlayerLoadoutSummary(profile: PlayerProfile, includeSlotLabels = false): string {
+    const [slotOneWeapon, slotTwoWeapon] = profile.selectedWeaponIds.map((weaponId) => getWeaponDefinition(weaponId));
+
+    if (includeSlotLabels) {
+        return `Slot 1: ${slotOneWeapon.name} | Slot 2: ${slotTwoWeapon.name}`;
+    }
+
+    return slotOneWeapon.id === slotTwoWeapon.id
+        ? slotOneWeapon.name
+        : `${slotOneWeapon.name} / ${slotTwoWeapon.name}`;
+}
+
 function createPlayerLoadout(weaponId?: string): PlayerLoadout {
     const weapon = getWeaponDefinition(weaponId);
     return {
@@ -1503,6 +1574,8 @@ function createDefaultPlayerProfile(): PlayerProfile {
     return {
         currency: 0,
         unlockedWeaponIds: [STARTER_WEAPON.id],
+        selectedWeaponIds: [STARTER_WEAPON.id, STARTER_WEAPON.id],
+        activeWeaponIndex: 0,
         selectedWeaponId: STARTER_WEAPON.id,
         removeFadedEnemyCorpses: false,
         touchControlsEnabled: false
@@ -1515,13 +1588,18 @@ function normalizePlayerProfile(profile?: Partial<PlayerProfile> | null): Player
         STARTER_WEAPON.id,
         ...(profile?.unlockedWeaponIds ?? []).filter((weaponId) => WEAPON_CATALOG.some((weapon) => weapon.id === weaponId))
     ]));
-    const selectedWeaponId = unlockedWeaponIds.includes(profile?.selectedWeaponId ?? "")
-        ? profile!.selectedWeaponId!
-        : defaultProfile.selectedWeaponId;
+    const selectedWeaponIds = normalizeSelectedWeaponIds(profile, unlockedWeaponIds);
+    const requestedActiveWeaponIndex = typeof profile?.activeWeaponIndex === "number"
+        ? Math.max(0, Math.min(1, Math.floor(profile.activeWeaponIndex)))
+        : selectedWeaponIds.indexOf(profile?.selectedWeaponId ?? "");
+    const activeWeaponIndex = requestedActiveWeaponIndex >= 0 ? requestedActiveWeaponIndex : 0;
+    const selectedWeaponId = selectedWeaponIds[activeWeaponIndex] ?? defaultProfile.selectedWeaponId;
 
     return {
         currency: Math.max(0, Math.floor(profile?.currency ?? defaultProfile.currency)),
         unlockedWeaponIds,
+        selectedWeaponIds,
+        activeWeaponIndex,
         selectedWeaponId,
         removeFadedEnemyCorpses: profile?.removeFadedEnemyCorpses ?? defaultProfile.removeFadedEnemyCorpses,
         touchControlsEnabled: profile?.touchControlsEnabled ?? defaultProfile.touchControlsEnabled
@@ -1569,19 +1647,40 @@ function isWeaponUnlocked(profile: PlayerProfile, weaponId: string): boolean {
 function selectWeaponForProfile(weaponId: string): PlayerProfile {
     return updatePlayerProfile((profile) => {
         if (isWeaponUnlocked(profile, weaponId)) {
-            profile.selectedWeaponId = weaponId;
+            applyWeaponSlotSelection(profile, weaponId, profile.activeWeaponIndex);
         }
     });
 }
 
-function purchaseWeaponForProfile(weaponId: string): { success: boolean; profile: PlayerProfile; message: string } {
+function setWeaponSlotForProfile(weaponId: string, slotIndex = 0): { success: boolean; profile: PlayerProfile; message: string } {
     const weapon = getWeaponDefinition(weaponId);
+    const resolvedSlotIndex = resolveWeaponSlotIndex(slotIndex);
+    let resultMessage = "";
+
+    const profile = updatePlayerProfile((currentProfile) => {
+        if (!isWeaponUnlocked(currentProfile, weapon.id)) {
+            resultMessage = `${weapon.name} is still locked.`;
+            return;
+        }
+
+        resultMessage = applyWeaponSlotSelection(currentProfile, weapon.id, resolvedSlotIndex);
+    });
+
+    return {
+        success: profile.selectedWeaponIds[resolvedSlotIndex] === weapon.id,
+        profile,
+        message: resultMessage
+    };
+}
+
+function purchaseWeaponForProfile(weaponId: string, slotIndex = 0): { success: boolean; profile: PlayerProfile; message: string } {
+    const weapon = getWeaponDefinition(weaponId);
+    const resolvedSlotIndex = resolveWeaponSlotIndex(slotIndex);
     let resultMessage = "";
 
     const profile = updatePlayerProfile((currentProfile) => {
         if (isWeaponUnlocked(currentProfile, weapon.id)) {
-            currentProfile.selectedWeaponId = weapon.id;
-            resultMessage = `${weapon.name} equipped.`;
+            resultMessage = applyWeaponSlotSelection(currentProfile, weapon.id, resolvedSlotIndex);
             return;
         }
 
@@ -1592,12 +1691,35 @@ function purchaseWeaponForProfile(weaponId: string): { success: boolean; profile
 
         currentProfile.currency -= weapon.cost;
         currentProfile.unlockedWeaponIds.push(weapon.id);
-        currentProfile.selectedWeaponId = weapon.id;
-        resultMessage = `${weapon.name} unlocked and equipped.`;
+        applyWeaponSlotSelection(currentProfile, weapon.id, resolvedSlotIndex);
+        resultMessage = `${weapon.name} unlocked and set to ${getWeaponSlotLabel(resolvedSlotIndex)}.`;
     });
 
     return {
         success: isWeaponUnlocked(profile, weapon.id),
+        profile,
+        message: resultMessage
+    };
+}
+
+function swapActiveWeaponForProfile(): { success: boolean; profile: PlayerProfile; message: string } {
+    let resultMessage = "";
+
+    const profile = updatePlayerProfile((currentProfile) => {
+        if (!canSwapProfileWeapons(currentProfile)) {
+            currentProfile.activeWeaponIndex = resolveWeaponSlotIndex(currentProfile.activeWeaponIndex);
+            currentProfile.selectedWeaponId = currentProfile.selectedWeaponIds[currentProfile.activeWeaponIndex];
+            resultMessage = "Pick a second weapon in the shop to swap during a run.";
+            return;
+        }
+
+        currentProfile.activeWeaponIndex = currentProfile.activeWeaponIndex === 0 ? 1 : 0;
+        currentProfile.selectedWeaponId = currentProfile.selectedWeaponIds[currentProfile.activeWeaponIndex];
+        resultMessage = `${getWeaponDefinition(currentProfile.selectedWeaponId).name} ready.`;
+    });
+
+    return {
+        success: canSwapProfileWeapons(profile),
         profile,
         message: resultMessage
     };

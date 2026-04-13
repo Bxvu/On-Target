@@ -12,7 +12,7 @@ class MainMenu extends Menu {
 
     create(): void {
         const playerProfile = loadPlayerProfile();
-        const selectedWeapon = getWeaponDefinition(playerProfile.selectedWeaponId);
+        const loadoutSummary = formatPlayerLoadoutSummary(playerProfile);
         const manualLevels = getManualLevelDefinitions();
 
         const wholeContainer = this.add.container(1920 / 2, -1000);
@@ -25,7 +25,7 @@ class MainMenu extends Menu {
             font: "48px Arial",
             fill: "#1b1b1b"
         }).setOrigin(0.5);
-        const weaponText = this.add.text(0, -205, `Equipped: ${selectedWeapon.name}`, {
+        const weaponText = this.add.text(0, -205, `Loadout: ${loadoutSummary}`, {
             font: "36px Arial",
             fill: "#1b1b1b"
         }).setOrigin(0.5);
@@ -436,12 +436,18 @@ class ShopMenu extends Menu {
             font: "30px Arial",
             fill: "#1b1b1b"
         }).setOrigin(0.5);
+        this.shopLoadoutText = this.add.text(0, -265, "", {
+            font: "28px Arial",
+            fill: "#1b1b1b",
+            align: "center"
+        }).setOrigin(0.5);
         this.shopStatusText = this.add.text(0, 370, "", {
             font: "34px Arial",
             fill: "#1b1b1b"
         }).setOrigin(0.5);
 
-        wholeContainer.add([title, this.shopMoneyText, subtitle, this.shopStatusText]);
+        subtitle.setText("Hover or tap a weapon to inspect it, then assign it to Slot 1 or Slot 2 for in-run swapping.");
+        wholeContainer.add([title, this.shopMoneyText, subtitle, this.shopLoadoutText, this.shopStatusText]);
 
         const gridPanelBounds = {
             x: -420,
@@ -681,20 +687,36 @@ class ShopMenu extends Menu {
             this.detailState
         ]);
 
-        this.shopActionButton = createTextButton(this, {
-            x: 380,
-            y: 430,
-            width: 300,
-            height: 96,
-            label: "",
-            backgroundColor: 0x8ecae6,
-            textColor: "#1b1b1b",
-            font: "bold 32px Arial",
-            parent: wholeContainer
-        });
+        this.shopSlotButtons = [
+            createTextButton(this, {
+                x: 210,
+                y: 430,
+                width: 240,
+                height: 96,
+                label: "",
+                backgroundColor: 0x8ecae6,
+                textColor: "#1b1b1b",
+                font: "bold 30px Arial",
+                parent: wholeContainer
+            }),
+            createTextButton(this, {
+                x: 550,
+                y: 430,
+                width: 240,
+                height: 96,
+                label: "",
+                backgroundColor: 0xffd166,
+                textColor: "#1b1b1b",
+                font: "bold 30px Arial",
+                parent: wholeContainer
+            })
+        ];
 
-        this.shopActionButton.background.on("pointerup", () => {
-            this.handleShopAction(getWeaponDefinition(this.focusedWeaponId));
+        this.shopSlotButtons[0].background.on("pointerup", () => {
+            this.handleShopSlotAction(getWeaponDefinition(this.focusedWeaponId), 0);
+        });
+        this.shopSlotButtons[1].background.on("pointerup", () => {
+            this.handleShopSlotAction(getWeaponDefinition(this.focusedWeaponId), 1);
         });
 
         const backButton = createTextButton(this, {
@@ -779,19 +801,14 @@ class ShopMenu extends Menu {
         });
     }
 
-    handleShopAction(weapon: WeaponDefinition): void {
-        if (isWeaponUnlocked(this.playerProfile, weapon.id)) {
-            this.playerProfile = selectWeaponForProfile(weapon.id);
-            this.focusedWeaponId = weapon.id;
-            this.shopStatusText.setText(`${weapon.name} equipped.`);
-            this.refreshShopState();
-            return;
-        }
+    handleShopSlotAction(weapon: WeaponDefinition, slotIndex: number): void {
+        const slotResult = isWeaponUnlocked(this.playerProfile, weapon.id)
+            ? setWeaponSlotForProfile(weapon.id, slotIndex)
+            : purchaseWeaponForProfile(weapon.id, slotIndex);
 
-        const purchaseResult = purchaseWeaponForProfile(weapon.id);
-        this.playerProfile = purchaseResult.profile;
-        this.focusedWeaponId = this.playerProfile.selectedWeaponId;
-        this.shopStatusText.setText(purchaseResult.message);
+        this.playerProfile = slotResult.profile;
+        this.focusedWeaponId = weapon.id;
+        this.shopStatusText.setText(slotResult.message);
         this.refreshShopState();
     }
 
@@ -802,9 +819,12 @@ class ShopMenu extends Menu {
 
     refreshShopState(): void {
         this.shopMoneyText.setText(`Money: $${this.playerProfile.currency}`);
+        this.shopLoadoutText.setText(`Loadout: ${formatPlayerLoadoutSummary(this.playerProfile, true)}`);
         const focusedWeapon = getWeaponDefinition(this.focusedWeaponId);
         const focusedUnlocked = isWeaponUnlocked(this.playerProfile, focusedWeapon.id);
-        const focusedSelected = this.playerProfile.selectedWeaponId === focusedWeapon.id;
+        const focusedSelectedSlots = this.playerProfile.selectedWeaponIds
+            .map((weaponId: string, index: number) => weaponId === focusedWeapon.id ? getWeaponSlotLabel(index) : null)
+            .filter((slotLabel: string | null) => slotLabel != null);
         const detailStatLines = this.getShopDetailStatLines(focusedWeapon);
 
         this.detailPreviewBackground.setFillStyle(focusedWeapon.accentColor, 0.18);
@@ -815,39 +835,48 @@ class ShopMenu extends Menu {
         this.detailStats.setFontSize(detailStatLines.length >= 7 ? 18 : detailStatLines.length >= 5 ? 20 : 22);
         this.detailStats.setText(detailStatLines.join("\n"));
         this.detailState.setText(
-            focusedSelected
-                ? "Currently equipped"
-                : focusedUnlocked
-                    ? "Unlocked and ready to equip"
-                    : `Locked until you buy it for $${focusedWeapon.cost}`
+            focusedUnlocked
+                ? focusedSelectedSlots.length > 0
+                    ? `Selected in ${focusedSelectedSlots.join(" and ")}`
+                    : "Unlocked and ready for either slot"
+                : `Locked until you buy it for $${focusedWeapon.cost}`
         );
 
         this.detailDescription.setY(this.detailWeaponName.y + this.detailWeaponName.height + 12);
         this.detailStats.setY(this.detailDescription.y + this.detailDescription.height + 12);
         this.detailState.setY(this.detailStats.y + this.detailStats.height + 12);
 
-        if (focusedSelected) {
-            this.shopActionButton.label.setText("Equipped");
-        }
-        else if (focusedUnlocked) {
-            this.shopActionButton.label.setText("Equip Weapon");
-        }
-        else {
-            this.shopActionButton.label.setText(`Buy for $${focusedWeapon.cost}`);
-        }
-
-        this.shopActionButton.background.setFillStyle(focusedWeapon.accentColor, 1);
+        this.shopSlotButtons.forEach((button: TextButton, index: number) => {
+            const slotLabel = getWeaponSlotLabel(index);
+            const assignedToSlot = this.playerProfile.selectedWeaponIds[index] === focusedWeapon.id;
+            button.label.setText(
+                focusedUnlocked
+                    ? assignedToSlot
+                        ? `${slotLabel}\nSelected`
+                        : `Set ${slotLabel}`
+                    : `Buy +\n${slotLabel}`
+            );
+            button.background.setFillStyle(assignedToSlot ? focusedWeapon.accentColor : (index === 0 ? 0x8ecae6 : 0xffd166), 1);
+            button.background.setAlpha(focusedUnlocked || this.playerProfile.currency >= focusedWeapon.cost ? 1 : 0.72);
+        });
 
         this.shopCards.forEach((card: { weapon: WeaponDefinition; tile: GameContainer; tileBackground: any; stateText: GameText; tileHeight: number }) => {
             const unlocked = isWeaponUnlocked(this.playerProfile, card.weapon.id);
-            const selected = this.playerProfile.selectedWeaponId === card.weapon.id;
+            const selectedSlots = this.playerProfile.selectedWeaponIds
+                .map((weaponId: string, index: number) => weaponId === card.weapon.id ? index : -1)
+                .filter((slotIndex: number) => slotIndex >= 0);
             const focused = this.focusedWeaponId === card.weapon.id;
 
             card.tileBackground.setStrokeStyle(focused ? 8 : 5, card.weapon.accentColor, 1);
             card.tileBackground.setFillStyle(focused ? 0xffffff : 0xfafcf9, 1);
 
-            if (selected) {
-                card.stateText.setText("Equipped");
+            if (selectedSlots.length === 2) {
+                card.stateText.setText("Slots 1 & 2");
+                return;
+            }
+
+            if (selectedSlots.length === 1) {
+                card.stateText.setText(getWeaponSlotLabel(selectedSlots[0]));
                 return;
             }
 

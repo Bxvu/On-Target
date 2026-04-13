@@ -378,6 +378,8 @@ interface WeaponDefinition {
 interface PlayerProfile {
     currency: number;
     unlockedWeaponIds: string[];
+    selectedWeaponIds: string[];
+    activeWeaponIndex: number;
     selectedWeaponId: string;
     removeFadedEnemyCorpses: boolean;
     touchControlsEnabled: boolean;

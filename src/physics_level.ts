@@ -16,7 +16,6 @@ const PLAYER_OVERHEAL_DECAY_INTERVAL_MS = 1000;
 const WORLD_BOUNDS = {
     ground: { x: 1920 / 2, y: 1300, width: 2000, height: 500 },
     ceiling: { x: 1920 / 2, y: -1000, width: 2000, height: 500 },
-    rightWall: { x: 1920 + 240, y: (1080 / 2) - 1000, width: 500, height: 3500 },
     leftWall: { x: -240, y: (1080 / 2) - 1000, width: 500, height: 3500 }
 };
 
@@ -61,6 +60,7 @@ const TOUCH_AIM_DEADZONE = 18;
 const TOUCH_AIM_TARGET_DISTANCE = 1150;
 const TOUCH_FIRE_BUTTON_CENTER = { x: 1690, y: 840 };
 const TOUCH_FIRE_BUTTON_RADIUS = 118;
+const SWAP_WEAPON_BUTTON_CENTER = { x: 150, y: 470 };
 const GRENADE_EXPLOSION_RING_COLOR = 0xff9f1c;
 const GRENADE_EXPLOSION_FILL_COLOR = 0xffd166;
 
@@ -146,6 +146,8 @@ class LevelScene extends LooseScene {
         this.touchControlPointerDownHandler = undefined;
         this.touchControlPointerMoveHandler = undefined;
         this.touchControlPointerUpHandler = undefined;
+        this.hudPointerIds = new Set<number>();
+        this.hudPointerUpHandler = undefined;
 
         this.events.removeAllListeners("levelEnd");
         this.events.removeAllListeners("arrowHit");
@@ -199,6 +201,7 @@ class LevelScene extends LooseScene {
         this.weaponDisplay = this.add.text(960, 92, "", HUD_STYLES.weapon).setOrigin(0.5, 0.5).setDepth(25);
         this.refreshEconomyDisplay();
         this.createSystemButtons();
+        this.refreshWeaponSwapButtonState();
     }
 
     refreshEconomyDisplay(): void {
@@ -221,9 +224,154 @@ class LevelScene extends LooseScene {
             depth: 25
         });
 
-        pauseButton.background.on("pointerup", () => {
+        this.bindSystemButton(pauseButton, () => {
             this.openPauseMenu();
         });
+
+        this.weaponSwapButton = createTextButton(this, {
+            x: SWAP_WEAPON_BUTTON_CENTER.x,
+            y: SWAP_WEAPON_BUTTON_CENTER.y,
+            width: 210,
+            height: 94,
+            label: "Swap\nWeapon",
+            backgroundColor: 0x8ecae6,
+            textColor: "#1b1b1b",
+            font: "bold 28px Arial",
+            depth: 25
+        });
+
+        this.bindSystemButton(this.weaponSwapButton, () => {
+            this.swapPlayerWeapon();
+        });
+    }
+
+    bindSystemButton(button: TextButton, onActivate: () => void): void {
+        button.background.on("pointerdown", (pointer: any) => {
+            this.hudPointerIds.add(pointer.id);
+            this.cancelPlayerCharge();
+        });
+
+        button.background.on("pointerup", (pointer: any) => {
+            this.hudPointerIds.delete(pointer.id);
+            onActivate();
+        });
+
+        if (!this.hudPointerUpHandler) {
+            this.hudPointerUpHandler = (pointer: any) => {
+                this.hudPointerIds.delete(pointer.id);
+            };
+
+            this.input.on("pointerup", this.hudPointerUpHandler);
+            this.events.once("shutdown", () => {
+                if (this.hudPointerUpHandler) {
+                    this.input.off("pointerup", this.hudPointerUpHandler);
+                }
+            });
+        }
+    }
+
+    refreshWeaponSwapButtonState(): void {
+        if (!this.weaponSwapButton) {
+            return;
+        }
+
+        const canSwapWeapons = canSwapProfileWeapons(this.playerProfile);
+        this.weaponSwapButton.label.setText(canSwapWeapons ? "Swap\nWeapon" : "Need 2\nWeapons");
+        this.weaponSwapButton.background.setFillStyle(canSwapWeapons ? 0x8ecae6 : 0xb8c4c8, 1);
+        this.weaponSwapButton.background.setAlpha(canSwapWeapons ? 1 : 0.76);
+    }
+
+    swapPlayerWeapon(): void {
+        if (this.isLevelEnding) {
+            return;
+        }
+
+        const swapResult = swapActiveWeaponForProfile();
+
+        this.playerProfile = swapResult.profile;
+
+        if (!swapResult.success) {
+            this.refreshWeaponSwapButtonState();
+            return;
+        }
+
+        this.applyActivePlayerLoadout();
+    }
+
+    applyActivePlayerLoadout(): void {
+        this.playerLoadout = createPlayerLoadout(this.playerProfile.selectedWeaponId);
+        this.player.loadout = this.playerLoadout;
+        this.cancelPlayerCharge();
+        this.refreshPlayerWeaponVisuals();
+        this.refreshEconomyDisplay();
+        this.refreshWeaponSwapButtonState();
+    }
+
+    refreshPlayerWeaponVisuals(): void {
+        if (!this.player || !this.bow) {
+            return;
+        }
+
+        const scale = Math.abs(this.levelScale) || 1;
+        const attackStyle = this.playerLoadout.weapon.attackStyle;
+        const nextAimSprite = this.createStaticWeaponSprite(
+            this.playerLoadout.projectile.texture,
+            scale,
+            this.playerLoadout.projectile.tint,
+            this.playerLoadout.projectile.scale
+        );
+        const nextWeaponSprite = this.createStaticWeaponSprite(
+            attackStyle === "throw" ? this.playerLoadout.projectile.texture : this.playerLoadout.weapon.bowTexture,
+            scale,
+            attackStyle === "throw" ? this.playerLoadout.projectile.tint : this.playerLoadout.weapon.bowTint,
+            attackStyle === "throw" ? this.playerLoadout.projectile.scale * 1.35 : 0.2
+        );
+
+        if (attackStyle === "throw") {
+            nextAimSprite.setVisible(false);
+            nextAimSprite.setAlpha(0);
+        }
+
+        this.detachBowConstraints();
+
+        if (this.bowSprite?.active) {
+            this.bow.remove(this.bowSprite);
+            this.bowSprite.destroy();
+        }
+
+        if (this.playerAimSprite?.active) {
+            this.bow.remove(this.playerAimSprite);
+            this.playerAimSprite.destroy();
+        }
+
+        this.bowSprite = nextWeaponSprite;
+        this.playerAimSprite = nextAimSprite;
+        this.bow.add([nextWeaponSprite, nextAimSprite]);
+
+        if (attackStyle === "bow") {
+            this.rightArmBowConstraint = this.matter.add.constraint(this.player.parts.rightLowerArm, this.bowSprite.body, 0, 0.001, {
+                pointA: { x: 0, y: 0 },
+                pointB: { x: 0, y: 0 },
+                render: { visible: false }
+            });
+
+            this.leftArmBowConstraint = this.matter.add.constraint(this.player.parts.leftLowerArm, this.bowSprite.body, 0, 0.001, {
+                pointA: { x: 0, y: 0 },
+                pointB: { x: 0, y: 0 },
+                render: { visible: false }
+            });
+        }
+
+        this.syncPlayerAttackAnchor();
+    }
+
+    cancelPlayerCharge(): void {
+        this.chargeTime = 0;
+        this.chargeDisplay?.setText("Charge: 0");
+
+        if (this.playerLoadout.weapon.attackStyle === "throw" && this.player?.actionState?.kind === "charge") {
+            this.setCombatAction(this.player, "idle");
+        }
     }
 
     createPlayerAimLine(): void {
@@ -527,6 +675,10 @@ class LevelScene extends LooseScene {
             return this.touchFirePointerId != null;
         }
 
+        if (this.hudPointerIds.has(this.input.activePointer.id)) {
+            return false;
+        }
+
         return this.input.activePointer.isDown;
     }
 
@@ -601,19 +753,26 @@ class LevelScene extends LooseScene {
     detachBowConstraints(): void {
         if (this.rightArmBowConstraint) {
             this.matter.world.removeConstraint(this.rightArmBowConstraint);
+            this.rightArmBowConstraint = undefined;
         }
 
         if (this.leftArmBowConstraint) {
             this.matter.world.removeConstraint(this.leftArmBowConstraint);
+            this.leftArmBowConstraint = undefined;
         }
     }
 
     createWorldBounds(): void {
         this.matter.add.rectangle(WORLD_BOUNDS.ground.x, WORLD_BOUNDS.ground.y, WORLD_BOUNDS.ground.width, WORLD_BOUNDS.ground.height, { isStatic: true });
         this.matter.add.rectangle(WORLD_BOUNDS.ceiling.x, WORLD_BOUNDS.ceiling.y, WORLD_BOUNDS.ceiling.width, WORLD_BOUNDS.ceiling.height, { isStatic: true });
+        this.matter.add.rectangle(WORLD_BOUNDS.leftWall.x, WORLD_BOUNDS.leftWall.y, WORLD_BOUNDS.leftWall.width, WORLD_BOUNDS.leftWall.height, {
+            isStatic: true,
+            collisionFilter: {
+                category: PLAYER_LEFT_WALL_COLLISION_CATEGORY,
+                mask: PLAYER_RAGDOLL_COLLISION_CATEGORY
+            }
+        });
         this.add.rectangle(WORLD_BOUNDS.ground.x, WORLD_BOUNDS.ground.y, WORLD_BOUNDS.ground.width, WORLD_BOUNDS.ground.height, 0x01FFA3);
-        this.matter.add.rectangle(WORLD_BOUNDS.rightWall.x, WORLD_BOUNDS.rightWall.y, WORLD_BOUNDS.rightWall.width, WORLD_BOUNDS.rightWall.height, { isStatic: true });
-        this.matter.add.rectangle(WORLD_BOUNDS.leftWall.x, WORLD_BOUNDS.leftWall.y, WORLD_BOUNDS.leftWall.width, WORLD_BOUNDS.leftWall.height, { isStatic: true });
     }
 
     hasActiveTimedPowerup(kind: TimedPowerupKind): boolean {

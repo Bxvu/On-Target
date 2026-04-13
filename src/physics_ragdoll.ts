@@ -117,6 +117,8 @@ const PLAYER_COLLISION_GROUPS: Record<BodyPartName, number> = {
     rightUpperLeg: -15,
     rightLowerLeg: -15
 };
+const PLAYER_RAGDOLL_COLLISION_CATEGORY = 0x0004;
+const PLAYER_LEFT_WALL_COLLISION_CATEGORY = 0x0008;
 
 class HumanoidFactory {
     constructor(private scene: LooseScene) {
@@ -131,10 +133,16 @@ class HumanoidFactory {
     }
 
     createPlayer(x: number, y: number, scale: number, options: Partial<HumanoidBuildOptions> = {}): RagdollPerson {
-        return this.createHumanoid(x, y, scale, {
+        const player = this.createHumanoid(x, y, scale, {
             ...options,
             collisionGroupResolver: (partName) => PLAYER_COLLISION_GROUPS[partName]
         });
+
+        Object.values(player.parts).forEach((part: MatterBody) => {
+            part.collisionFilter.category = PLAYER_RAGDOLL_COLLISION_CATEGORY;
+        });
+
+        return player;
     }
 
     createHumanoid(x: number, y: number, scale: number, options: HumanoidBuildOptions): RagdollPerson {
