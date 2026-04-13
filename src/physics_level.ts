@@ -788,6 +788,68 @@ class LevelScene extends LooseScene {
         });
     }
 
+    isGrenadeProjectile(arrow: MatterArrow): boolean {
+        return arrow.projectileConfig.texture === "grenade"
+            && (arrow.projectileConfig.explosionRadius ?? 0) > 0;
+    }
+
+    getProjectileImpactSpeed(arrow: MatterArrow): number {
+        const velocity = arrow.body?.velocity;
+
+        if (!velocity) {
+            return 0;
+        }
+
+        return Math.sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y));
+    }
+
+    checkGrenadeProjectileCollisions(): void {
+        this.spawnedArrows.slice().forEach((playerArrow) => {
+            if (
+                !playerArrow
+                || !playerArrow.body
+                || !playerArrow.active
+                || playerArrow.alreadyHit
+                || playerArrow.bodyConstraint
+                || !this.isGrenadeProjectile(playerArrow)
+            ) {
+                return;
+            }
+
+            for (const enemyArrow of this.opponentArrows.slice()) {
+                if (
+                    !enemyArrow
+                    || !enemyArrow.body
+                    || !enemyArrow.active
+                    || enemyArrow.alreadyHit
+                    || enemyArrow.bodyConstraint
+                ) {
+                    continue;
+                }
+
+                const collision = this.matter.collision.collides(playerArrow.body, enemyArrow.body);
+
+                if (!collision) {
+                    continue;
+                }
+
+                const impactSpeed = Math.max(
+                    this.getProjectileImpactSpeed(playerArrow),
+                    this.getProjectileImpactSpeed(enemyArrow)
+                );
+                const minImpactSpeed = playerArrow.projectileConfig.minImpactSpeed ?? 0;
+
+                if (impactSpeed < minImpactSpeed) {
+                    continue;
+                }
+
+                this.destroyArrowImmediately(enemyArrow, this.opponentArrows);
+                this.detonateProjectile(playerArrow, this.spawnedArrows);
+                break;
+            }
+        });
+    }
+
     collectTimedPowerup(powerup: TimedPowerupPickup, arrow: MatterArrow, arrowList: ArrowCollection): void {
         const definition = powerup.powerupDefinition;
         this.applyTimedPowerupToPlayer(definition, powerup.x, powerup.y - 48);
@@ -1309,6 +1371,7 @@ class LevelScene extends LooseScene {
         let humanoidsDefeated = true;
 
         this.checkTimedPowerupCollisions(this.spawnedArrows);
+        this.checkGrenadeProjectileCollisions();
 
         this.humanoids.forEach((humanoid: RagdollPerson) => {
             this.checkArrowCollisions(this.spawnedArrows, humanoid);
