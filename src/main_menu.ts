@@ -130,6 +130,17 @@ class SettingsMenu extends Menu {
         super("SettingsMenu");
     }
 
+    init(data: SettingsMenuData = {}): void {
+        this.settingsReturnScene = data.returnScene ?? "MainMenu";
+        this.settingsReturnLabel = this.settingsReturnScene === "PauseScene" ? "Back to\nPause" : "Main Menu";
+        this.settingsReturnData = this.settingsReturnScene === "PauseScene" && data.currentLevel != null
+            ? {
+                currentLevel: data.currentLevel,
+                levelData: data.levelData
+            } as PauseSceneData
+            : undefined;
+    }
+
     preload(): void {
         super.preload();
     }
@@ -137,8 +148,13 @@ class SettingsMenu extends Menu {
     create(): void {
         this.playerProfile = loadPlayerProfile();
         const offlineModeStatus = getOfflineModeStatus();
+        const overlay = this.add.rectangle(1920 / 2, 1080 / 2, 1920, 1080, 0x000000, 0.55);
+        overlay.setDepth(1000);
+        overlay.setInteractive();
+
         const wholeContainer = this.add.container(1920 / 2, -1000);
-        const panel = this.add.rexRoundRectangle(0, 0, 1100, 860, 30, 0x99b0af, 1);
+        wholeContainer.setDepth(1001);
+        const panel = this.add.rexRoundRectangle(0, 0, 1200, 880, 30, 0x99b0af, 1);
         panel.postFX.addShadow(-1, 1, 0.02, 1, 0x000000, 12, 1);
         wholeContainer.add(panel);
 
@@ -148,68 +164,96 @@ class SettingsMenu extends Menu {
         }).setOrigin(0.5);
         const subtitle = this.add.text(
             0,
-            -205,
-            "Move display options here and keep a local copy ready before your connection drops.",
+            -200,
+            "Tune the display and control style here, then jump straight back into the run.",
             {
                 font: "34px Arial",
                 fill: "#1b1b1b",
                 align: "center",
-                wordWrap: { width: 860 }
+                wordWrap: { width: 900 }
             }
         ).setOrigin(0.5);
-        const helperText = this.add.text(
-            0,
-            -120,
-            "Offline mode now caches this page so scene changes keep working even if your Wi-Fi drops mid-run.",
-            {
-                font: "28px Arial",
-                fill: "#1b1b1b",
-                align: "center",
-                wordWrap: { width: 820 }
-            }
-        ).setOrigin(0.5);
-        const cleanupTitle = this.add.text(0, 95, "Enemy corpse cleanup", {
+
+        const displayPanel = this.add.rexRoundRectangle(-290, 35, 430, 360, 26, 0xe5efe9, 1);
+        displayPanel.setStrokeStyle(4, 0x7c8a87, 1);
+        const displayTitle = this.add.text(-290, -110, "Display", {
             font: "bold 40px Arial",
             fill: "#000000",
             align: "center"
         }).setOrigin(0.5);
-        const cleanupDescription = this.add.text(
-            0,
-            150,
-            "When enabled, enemy body parts and stuck arrows get removed after their fade-out finishes.",
-            {
-                font: "28px Arial",
-                fill: "#1b1b1b",
-                align: "center",
-                wordWrap: { width: 820 }
-            }
-        ).setOrigin(0.5);
-        this.corpseCleanupStatusText = this.add.text(0, 300, "", {
-            font: "28px Arial",
-            fill: "#1b1b1b",
-            align: "center",
-            wordWrap: { width: 820 }
-        }).setOrigin(0.5);
-        const statusTitle = this.add.text(0, 350, offlineModeStatus.title, {
-            font: "bold 40px Arial",
+        const offlineStatusTitle = this.add.text(-290, 82, offlineModeStatus.title, {
+            font: "bold 28px Arial",
             fill: "#000000",
             align: "center",
-            wordWrap: { width: 820 }
+            wordWrap: { width: 320 }
         }).setOrigin(0.5);
-        const statusText = this.add.text(0, 415, offlineModeStatus.detail, {
-            font: "28px Arial",
+        const offlineStatusText = this.add.text(-290, 145, offlineModeStatus.detail, {
+            font: "22px Arial",
             fill: "#1b1b1b",
             align: "center",
-            wordWrap: { width: 820 }
+            wordWrap: { width: 340 }
         }).setOrigin(0.5);
 
-        wholeContainer.add([title, subtitle, helperText, cleanupTitle, cleanupDescription, this.corpseCleanupStatusText, statusTitle, statusText]);
+        const gameplayPanel = this.add.rexRoundRectangle(250, 90, 570, 520, 26, 0xf8fbf7, 1);
+        gameplayPanel.setStrokeStyle(4, 0x7c8a87, 1);
+        const gameplayTitle = this.add.text(250, -125, "Gameplay", {
+            font: "bold 40px Arial",
+            fill: "#000000",
+            align: "center"
+        }).setOrigin(0.5);
+        this.touchControlsStatusText = this.add.text(
+            250,
+            40,
+            "",
+            {
+                font: "24px Arial",
+                fill: "#1b1b1b",
+                align: "center",
+                wordWrap: { width: 430 }
+            }
+        ).setOrigin(0.5);
+        const cleanupTitle = this.add.text(250, 145, "Enemy corpse cleanup", {
+            font: "bold 36px Arial",
+            fill: "#000000",
+            align: "center"
+        }).setOrigin(0.5);
+        const cleanupDescription = this.add.text(
+            250,
+            202,
+            "When enabled, enemy body parts and stuck arrows get removed after their fade-out finishes.",
+            {
+                font: "24px Arial",
+                fill: "#1b1b1b",
+                align: "center",
+                wordWrap: { width: 430 }
+            }
+        ).setOrigin(0.5);
+        this.corpseCleanupStatusText = this.add.text(250, 345, "", {
+            font: "24px Arial",
+            fill: "#1b1b1b",
+            align: "center",
+            wordWrap: { width: 430 }
+        }).setOrigin(0.5);
+        wholeContainer.add([
+            title,
+            subtitle,
+            displayPanel,
+            displayTitle,
+            offlineStatusTitle,
+            offlineStatusText,
+            gameplayPanel,
+            gameplayTitle,
+            this.touchControlsStatusText,
+            cleanupTitle,
+            cleanupDescription,
+            this.corpseCleanupStatusText
+        ]);
 
         const fullscreenButton = createTextButton(this, {
-            x: 0,
-            y: 10,
-            width: 360,
-            height: 110,
+            x: -290,
+            y: -22,
+            width: 300,
+            height: 100,
             label: "Fullscreen",
             backgroundColor: 0x8ecae6,
             font: "bold 34px Arial",
@@ -217,11 +261,30 @@ class SettingsMenu extends Menu {
         });
         bindFullscreenToggle(this, fullscreenButton);
 
+        this.touchControlsButton = createTextButton(this, {
+            x: 250,
+            y: -40,
+            width: 360,
+            height: 92,
+            label: "",
+            backgroundColor: 0x8ecae6,
+            font: "bold 30px Arial",
+            parent: wholeContainer
+        });
+        this.refreshTouchControlsSetting();
+
+        this.touchControlsButton.background.on("pointerup", () => {
+            this.playerProfile = updatePlayerProfile((profile) => {
+                profile.touchControlsEnabled = !profile.touchControlsEnabled;
+            });
+            this.refreshTouchControlsSetting();
+        });
+
         this.corpseCleanupButton = createTextButton(this, {
-            x: 0,
-            y: 235,
-            width: 420,
-            height: 96,
+            x: 250,
+            y: 275,
+            width: 360,
+            height: 92,
             label: "",
             backgroundColor: 0x8ecae6,
             font: "bold 32px Arial",
@@ -239,15 +302,21 @@ class SettingsMenu extends Menu {
         const backButton = createTextButton(this, {
             x: 0,
             y: 365,
-            width: 300,
-            height: 100,
-            label: "Main Menu",
+            width: 320,
+            height: 96,
+            label: this.settingsReturnLabel,
             backgroundColor: 0x3fafaa,
+            font: "bold 32px Arial",
             parent: wholeContainer
         });
 
+        const escape = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        escape.on("down", () => {
+            this.leaveSettingsMenu(wholeContainer);
+        });
+
         backButton.background.on("pointerup", () => {
-            this.menuLeave(wholeContainer, "SettingsMenu", "MainMenu");
+            this.leaveSettingsMenu(wholeContainer);
         });
 
         this.tweens.add({
@@ -256,6 +325,8 @@ class SettingsMenu extends Menu {
             duration: 500,
             ease: "Cubic.out"
         });
+
+        this.scene.bringToTop();
     }
 
     refreshCorpseCleanupSetting(): void {
@@ -268,6 +339,27 @@ class SettingsMenu extends Menu {
                 ? "Faded enemy ragdolls will be destroyed to keep long runs running smoother."
                 : "Enemy ragdolls will stay behind after fading so the battlefield keeps the full carnage."
         );
+    }
+
+    refreshTouchControlsSetting(): void {
+        const touchControlsEnabled = this.playerProfile.touchControlsEnabled;
+
+        this.touchControlsButton.label.setText(touchControlsEnabled ? "Touch Controls: On" : "Touch Controls: Off");
+        this.touchControlsButton.background.setFillStyle(touchControlsEnabled ? 0x52b788 : 0x8ecae6, 1);
+        this.touchControlsStatusText.setText(
+            touchControlsEnabled
+                ? "Runs show a left thumb aim circle and a right hold-to-fire button for touchscreen play."
+                : "Runs keep the current pointer aim and hold-to-charge firing controls."
+        );
+    }
+
+    leaveSettingsMenu(target: GameObject): void {
+        if (this.settingsReturnScene === "PauseScene" && this.settingsReturnData) {
+            this.menuLeave(target, "SettingsMenu", "PauseScene", this.settingsReturnData);
+            return;
+        }
+
+        this.menuLeave(target, "SettingsMenu", "MainMenu");
     }
 }
 
@@ -770,9 +862,26 @@ class ShopMenu extends Menu {
 
     getShopDetailStatLines(weapon: WeaponDefinition): string[] {
         const lines = [
-            `Damage: B ${weapon.projectile.damage.body} | H ${weapon.projectile.damage.head}`,
-            `Shot Speed: x${weapon.powerMultiplier.toFixed(2)} | Pierce: ${weapon.projectile.pierceCount ?? 0}`
+            `Shot Speed: x${weapon.powerMultiplier.toFixed(2)} | Charge: x${weapon.chargeRateMultiplier.toFixed(2)}`
         ];
+
+        if (weapon.projectile.explosionRadius && weapon.projectile.explosionMaxDamage != null && weapon.projectile.explosionMinDamage != null) {
+            lines.push(
+                `Explosion: ${weapon.projectile.explosionMaxDamage} center -> ${weapon.projectile.explosionMinDamage} edge`,
+                `Radius: ${Math.round(weapon.projectile.explosionRadius)} | Pierce scales edge damage`
+            );
+        }
+        else {
+            lines.push(`Damage: B ${weapon.projectile.damage.body} | H ${weapon.projectile.damage.head}`);
+        }
+
+        if ((weapon.projectile.pierceCount ?? 0) > 0) {
+            lines.push(`Pierce: ${weapon.projectile.pierceCount ?? 0}`);
+        }
+
+        if (weapon.projectile.shrapnelCount && weapon.projectile.shrapnelProjectileKind) {
+            lines.push(`Shrapnel: ${weapon.projectile.shrapnelCount} ${weapon.projectile.shrapnelProjectileKind}s`);
+        }
 
         if (weapon.projectile.healPlayerOnHit && weapon.projectile.healPlayerOnHit > 0) {
             lines.push(`Heal: +${weapon.projectile.healPlayerOnHit} on hit`);
@@ -795,6 +904,23 @@ class ShopMenu extends Menu {
                 break;
             case "jam":
                 lines.push(`Slow: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay per stack`);
+                break;
+            }
+        });
+
+        (weapon.projectile.explosionStatusEffects ?? []).forEach((effect: EnemyStatusEffectConfig) => {
+            switch (effect.kind) {
+            case "burn":
+                lines.push(`Blast Burn: ${effect.damagePerTick} every ${Math.round(effect.tickIntervalMs / 100) / 10}s`);
+                break;
+            case "bounty":
+                lines.push(`Blast Bounty: +${formatModifierPercent(effect.rewardMultiplierPerStack ?? 0)} per stack`);
+                break;
+            case "scatter":
+                lines.push(`Blast Scatter: +${formatModifierPercent(effect.aimSpreadMultiplierPerStack)} spread per stack`);
+                break;
+            case "jam":
+                lines.push(`Blast Slow: +${formatModifierPercent(effect.attackIntervalMultiplierPerStack)} fire delay per stack`);
                 break;
             }
         });

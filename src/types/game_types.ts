@@ -26,6 +26,7 @@ type GameText = any;
 type GameObject = any;
 type ProjectileOwner = "player" | "enemy";
 type ProjectileHitboxShape = "rectangle" | "circle";
+type ShrapnelProjectileKind = "rock" | "arrow";
 type ShopItemCategory = "bow" | "arrow" | "utility";
 type EnemyArchetypeId = "standard";
 type EnemyStatusEffectKind = "bounty" | "burn" | "scatter" | "jam";
@@ -71,8 +72,13 @@ interface PauseSceneData {
     levelData?: LevelInitData;
 }
 
-interface MenuTransitionConfig extends LevelInitData {
+interface SettingsMenuData {
+    returnScene?: SceneKey;
+    currentLevel?: SceneKey;
+    levelData?: LevelInitData;
 }
+
+type MenuTransitionConfig = LevelInitData | PauseSceneData | SettingsMenuData;
 
 interface TextButton {
     container: GameContainer;
@@ -253,6 +259,14 @@ interface ProjectileConfig {
     healPlayerOnHit?: number;
     healPlayerOnKill?: number;
     healOwnerOnHit?: number;
+    explosionRadius?: number;
+    explosionMaxDamage?: number;
+    explosionMinDamage?: number;
+    explosionStatusEffects?: EnemyStatusEffectConfig[];
+    shrapnelProjectileKind?: ShrapnelProjectileKind;
+    shrapnelCount?: number;
+    shrapnelSpeedMin?: number;
+    shrapnelSpeedMax?: number;
 }
 
 interface EnemyAttackTuning {
@@ -343,6 +357,7 @@ interface WeaponDefinition {
     bowTexture: string;
     bowTint: number;
     attackStyle: WeaponAttackStyle;
+    chargeRateMultiplier: number;
     projectile: ProjectileConfig;
     powerMultiplier: number;
     accentColor: number;
@@ -354,6 +369,7 @@ interface PlayerProfile {
     unlockedWeaponIds: string[];
     selectedWeaponId: string;
     removeFadedEnemyCorpses: boolean;
+    touchControlsEnabled: boolean;
 }
 
 interface ShopStatEffect {

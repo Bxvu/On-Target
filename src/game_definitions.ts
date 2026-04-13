@@ -67,6 +67,14 @@ function createWeaponProjectile(config: {
     healPlayerOnHit?: number;
     healPlayerOnKill?: number;
     healOwnerOnHit?: number;
+    explosionRadius?: number;
+    explosionMaxDamage?: number;
+    explosionMinDamage?: number;
+    explosionStatusEffects?: EnemyStatusEffectConfig[];
+    shrapnelProjectileKind?: ShrapnelProjectileKind;
+    shrapnelCount?: number;
+    shrapnelSpeedMin?: number;
+    shrapnelSpeedMax?: number;
 }): ProjectileConfig {
     return {
         id: config.id,
@@ -84,7 +92,15 @@ function createWeaponProjectile(config: {
         minImpactSpeed: config.minImpactSpeed,
         healPlayerOnHit: config.healPlayerOnHit,
         healPlayerOnKill: config.healPlayerOnKill,
-        healOwnerOnHit: config.healOwnerOnHit
+        healOwnerOnHit: config.healOwnerOnHit,
+        explosionRadius: config.explosionRadius,
+        explosionMaxDamage: config.explosionMaxDamage,
+        explosionMinDamage: config.explosionMinDamage,
+        explosionStatusEffects: config.explosionStatusEffects?.map((effect) => ({ ...effect })),
+        shrapnelProjectileKind: config.shrapnelProjectileKind,
+        shrapnelCount: config.shrapnelCount,
+        shrapnelSpeedMin: config.shrapnelSpeedMin,
+        shrapnelSpeedMax: config.shrapnelSpeedMax
     };
 }
 
@@ -128,6 +144,7 @@ function createWeaponDefinition(config: {
     cost: number;
     bowTint: number;
     attackStyle?: WeaponAttackStyle;
+    chargeRateMultiplier?: number;
     powerMultiplier: number;
     accentColor: number;
     placeholderLabel: string;
@@ -146,6 +163,14 @@ function createWeaponDefinition(config: {
             minImpactSpeed?: number;
             healPlayerOnHit?: number;
             healPlayerOnKill?: number;
+            explosionRadius?: number;
+            explosionMaxDamage?: number;
+            explosionMinDamage?: number;
+            explosionStatusEffects?: EnemyStatusEffectConfig[];
+            shrapnelProjectileKind?: ShrapnelProjectileKind;
+            shrapnelCount?: number;
+            shrapnelSpeedMin?: number;
+            shrapnelSpeedMax?: number;
         };
 }): WeaponDefinition {
     return {
@@ -156,6 +181,7 @@ function createWeaponDefinition(config: {
         bowTexture: "bow",
         bowTint: config.bowTint,
         attackStyle: config.attackStyle ?? "bow",
+        chargeRateMultiplier: config.chargeRateMultiplier ?? 1,
         projectile: createWeaponProjectile(config.projectile),
         powerMultiplier: config.powerMultiplier,
         accentColor: config.accentColor,
@@ -201,8 +227,20 @@ function getProjectileStatusSummary(projectile: ProjectileConfig): string[] {
         summary.push(`Heal owner: +${projectile.healOwnerOnHit} on hit`);
     }
 
+    if (projectile.explosionRadius && projectile.explosionMaxDamage != null && projectile.explosionMinDamage != null) {
+        summary.push(`Explosion: ${projectile.explosionMaxDamage}-${projectile.explosionMinDamage} in ${Math.round(projectile.explosionRadius)}px`);
+    }
+
+    if (projectile.shrapnelCount && projectile.shrapnelCount > 0 && projectile.shrapnelProjectileKind) {
+        summary.push(`Shrapnel: ${projectile.shrapnelCount} ${projectile.shrapnelProjectileKind}s`);
+    }
+
     if (projectile.statusEffects && projectile.statusEffects.length > 0) {
         summary.push(...projectile.statusEffects.map((effect) => describeEnemyStatusEffect(effect)));
+    }
+
+    if (projectile.explosionStatusEffects && projectile.explosionStatusEffects.length > 0) {
+        summary.push(...projectile.explosionStatusEffects.map((effect) => describeEnemyStatusEffect(effect)));
     }
 
     if (summary.length === 0) {
@@ -338,6 +376,8 @@ const ENEMY_ROCK_CONFIG: ProjectileConfig = createEnemyProjectile({
     sticksToTargets: false,
     minImpactSpeed: 0
 });
+
+const GRENADE_COLOR = 0x6b705c;
 
 const ENEMY_ALTERNATE_PROJECTILE_CHANCE = 0.1;
 const ENEMY_ALTERNATE_PROJECTILES: ProjectileConfig[] = [
@@ -853,6 +893,259 @@ const WEAPON_CATALOG: WeaponDefinition[] = [
         }
     }),
     createWeaponDefinition({
+        id: "grenade-weapon",
+        name: "Grenade",
+        description: "A slow-charge throw that detonates on enemy impact with heavy center damage and softer outer splash.",
+        cost: 155,
+        bowTint: GRENADE_COLOR,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.45,
+        powerMultiplier: 0.68,
+        accentColor: GRENADE_COLOR,
+        placeholderLabel: "Blast",
+        projectile: {
+            id: "grenade-shot",
+            texture: "grenade",
+            scale: 0.2,
+            lifetimeMs: 7000,
+            maxActive: 12,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: GRENADE_COLOR,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 210,
+            explosionMaxDamage: 6,
+            explosionMinDamage: 2
+        }
+    }),
+    createWeaponDefinition({
+        id: "shrapnel-rock-grenade",
+        name: "Shrapnel Rocks",
+        description: "The blast bursts into flying stone fragments that keep bouncing through the crowd.",
+        cost: 185,
+        bowTint: 0xa68a64,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.42,
+        powerMultiplier: 0.66,
+        accentColor: 0xa68a64,
+        placeholderLabel: "Split",
+        projectile: {
+            id: "shrapnel-rock-grenade-shot",
+            texture: "grenade",
+            scale: 0.2,
+            lifetimeMs: 7000,
+            maxActive: 12,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0xa68a64,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 190,
+            explosionMaxDamage: 5,
+            explosionMinDamage: 2,
+            shrapnelProjectileKind: "rock",
+            shrapnelCount: 5,
+            shrapnelSpeedMin: 18,
+            shrapnelSpeedMax: 28
+        }
+    }),
+    createWeaponDefinition({
+        id: "shrapnel-arrow-grenade",
+        name: "Shrapnel Arrows",
+        description: "A fragmentation grenade that kicks out a ring of arrows when it pops.",
+        cost: 195,
+        bowTint: 0x7b2cbf,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.42,
+        powerMultiplier: 0.66,
+        accentColor: 0x7b2cbf,
+        placeholderLabel: "Burst",
+        projectile: {
+            id: "shrapnel-arrow-grenade-shot",
+            texture: "grenade",
+            scale: 0.2,
+            lifetimeMs: 7000,
+            maxActive: 12,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0x7b2cbf,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 185,
+            explosionMaxDamage: 5,
+            explosionMinDamage: 2,
+            shrapnelProjectileKind: "arrow",
+            shrapnelCount: 6,
+            shrapnelSpeedMin: 17,
+            shrapnelSpeedMax: 25
+        }
+    }),
+    createWeaponDefinition({
+        id: "burn-grenade",
+        name: "Burn Grenade",
+        description: "The explosion itself is smaller, but everyone caught in it gets set on fire.",
+        cost: 180,
+        bowTint: 0xf3722c,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.44,
+        powerMultiplier: 0.67,
+        accentColor: 0xf3722c,
+        placeholderLabel: "Fire",
+        projectile: {
+            id: "burn-grenade-shot",
+            texture: "grenade",
+            scale: 0.2,
+            lifetimeMs: 7000,
+            maxActive: 12,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0xf3722c,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 200,
+            explosionMaxDamage: 5,
+            explosionMinDamage: 2,
+            explosionStatusEffects: [{
+                kind: "burn",
+                damagePerTick: 1,
+                tickIntervalMs: 700,
+                durationMs: 4200,
+                maxStacks: 3
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "scatter-grenade",
+        name: "Scatter Grenade",
+        description: "A huge control blast that leaves survivors wildly inaccurate for a long stretch.",
+        cost: 205,
+        bowTint: 0x43aa8b,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.4,
+        powerMultiplier: 0.64,
+        accentColor: 0x43aa8b,
+        placeholderLabel: "Wide",
+        projectile: {
+            id: "scatter-grenade-shot",
+            texture: "grenade",
+            scale: 0.21,
+            lifetimeMs: 7000,
+            maxActive: 10,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0x43aa8b,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 285,
+            explosionMaxDamage: 4,
+            explosionMinDamage: 2,
+            explosionStatusEffects: [{
+                kind: "scatter",
+                aimSpreadMultiplierPerStack: 0.65,
+                throwForceReductionPerStack: 0.22,
+                durationMs: 9000,
+                maxStacks: 4
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "jam-grenade",
+        name: "Jam Grenade",
+        description: "A long-range suppressor blast that badly slows enemy attack timing across a huge area.",
+        cost: 210,
+        bowTint: 0x577590,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.4,
+        powerMultiplier: 0.64,
+        accentColor: 0x577590,
+        placeholderLabel: "Lock",
+        projectile: {
+            id: "jam-grenade-shot",
+            texture: "grenade",
+            scale: 0.21,
+            lifetimeMs: 7000,
+            maxActive: 10,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0x577590,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 290,
+            explosionMaxDamage: 4,
+            explosionMinDamage: 2,
+            explosionStatusEffects: [{
+                kind: "jam",
+                attackIntervalMultiplierPerStack: 0.65,
+                throwForceReductionPerStack: 0.2,
+                durationMs: 9000,
+                maxStacks: 4
+            }]
+        }
+    }),
+    createWeaponDefinition({
+        id: "blackout-grenade",
+        name: "Blackout Grenade",
+        description: "A premium denial grenade that blankets a massive zone with both scatter and jam.",
+        cost: 245,
+        bowTint: 0x264653,
+        attackStyle: "throw",
+        chargeRateMultiplier: 0.36,
+        powerMultiplier: 0.62,
+        accentColor: 0x264653,
+        placeholderLabel: "Control",
+        projectile: {
+            id: "blackout-grenade-shot",
+            texture: "grenade",
+            scale: 0.22,
+            lifetimeMs: 7200,
+            maxActive: 9,
+            damage: {
+                body: 0,
+                head: 0
+            },
+            tint: 0x264653,
+            hitboxShape: "circle",
+            sticksToTargets: false,
+            minImpactSpeed: 1,
+            explosionRadius: 315,
+            explosionMaxDamage: 4,
+            explosionMinDamage: 2,
+            explosionStatusEffects: [{
+                kind: "scatter",
+                aimSpreadMultiplierPerStack: 0.5,
+                throwForceReductionPerStack: 0.18,
+                durationMs: 8500,
+                maxStacks: 3
+            },
+            {
+                kind: "jam",
+                attackIntervalMultiplierPerStack: 0.5,
+                throwForceReductionPerStack: 0.18,
+                durationMs: 8500,
+                maxStacks: 3
+            }]
+        }
+    }),
+    createWeaponDefinition({
         id: "healing-arrow-bow",
         name: "Healing Arrow",
         description: "Slim arrows restore health only when they finish an enemy off.",
@@ -1039,7 +1332,8 @@ function createDefaultPlayerProfile(): PlayerProfile {
         currency: 0,
         unlockedWeaponIds: [STARTER_WEAPON.id],
         selectedWeaponId: STARTER_WEAPON.id,
-        removeFadedEnemyCorpses: false
+        removeFadedEnemyCorpses: false,
+        touchControlsEnabled: false
     };
 }
 
@@ -1057,7 +1351,8 @@ function normalizePlayerProfile(profile?: Partial<PlayerProfile> | null): Player
         currency: Math.max(0, Math.floor(profile?.currency ?? defaultProfile.currency)),
         unlockedWeaponIds,
         selectedWeaponId,
-        removeFadedEnemyCorpses: profile?.removeFadedEnemyCorpses ?? defaultProfile.removeFadedEnemyCorpses
+        removeFadedEnemyCorpses: profile?.removeFadedEnemyCorpses ?? defaultProfile.removeFadedEnemyCorpses,
+        touchControlsEnabled: profile?.touchControlsEnabled ?? defaultProfile.touchControlsEnabled
     };
 }
 

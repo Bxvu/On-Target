@@ -53,6 +53,16 @@ const TIMED_POWERUP_PICKUP_LIFETIME_MS = 9000;
 const TIMED_POWERUP_DROP_LIFETIME_MS = 6500;
 const TIMED_POWERUP_DROP_CHANCE = 0.2;
 const TIMED_POWERUP_COLLISION_RADIUS = 38;
+const TOUCH_CONTROL_DEPTH = 35;
+const TOUCH_AIM_PAD_CENTER = { x: 220, y: 840 };
+const TOUCH_AIM_PAD_RADIUS = 145;
+const TOUCH_AIM_KNOB_RADIUS = 56;
+const TOUCH_AIM_DEADZONE = 18;
+const TOUCH_AIM_TARGET_DISTANCE = 1150;
+const TOUCH_FIRE_BUTTON_CENTER = { x: 1690, y: 840 };
+const TOUCH_FIRE_BUTTON_RADIUS = 118;
+const GRENADE_EXPLOSION_RING_COLOR = 0xff9f1c;
+const GRENADE_EXPLOSION_FILL_COLOR = 0xffd166;
 
 class LevelScene extends LooseScene {
     init(data: LevelInitData = {}): void {
@@ -68,11 +78,32 @@ class LevelScene extends LooseScene {
 
     create(): void {
         this.initializeLevelState();
+        this.createProceduralProjectileTextures();
         this.registerDebugControls();
         this.registerSceneEvents();
         this.createHud();
         this.createPlayerRig();
+        this.createPlayerAimLine();
         this.createWorldBounds();
+        this.refreshRuntimeProfileSettings(true);
+        this.events.once("shutdown", () => {
+            this.destroyTouchControls();
+        });
+    }
+
+    createProceduralProjectileTextures(): void {
+        if (this.textures.exists("grenade")) {
+            return;
+        }
+
+        const grenadeSize = 96;
+        const grenadeGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        grenadeGraphics.fillStyle(0xffffff, 1);
+        grenadeGraphics.lineStyle(8, 0x1b1b1b, 1);
+        grenadeGraphics.fillCircle(grenadeSize / 2, grenadeSize / 2, 34);
+        grenadeGraphics.strokeCircle(grenadeSize / 2, grenadeSize / 2, 34);
+        grenadeGraphics.generateTexture("grenade", grenadeSize, grenadeSize);
+        grenadeGraphics.destroy();
     }
 
     initializeLevelState(): void {
@@ -105,6 +136,15 @@ class LevelScene extends LooseScene {
 
         this.mousex = this.input.activePointer.x;
         this.mousey = this.input.activePointer.y;
+        this.touchControlsEnabled = false;
+        this.touchAimPointerId = undefined;
+        this.touchFirePointerId = undefined;
+        this.touchAimDirection = { x: 1, y: 0 };
+        this.touchAimKnobPosition = { x: TOUCH_AIM_PAD_CENTER.x, y: TOUCH_AIM_PAD_CENTER.y };
+        this.touchControlsObjects = [];
+        this.touchControlPointerDownHandler = undefined;
+        this.touchControlPointerMoveHandler = undefined;
+        this.touchControlPointerUpHandler = undefined;
 
         this.events.removeAllListeners("levelEnd");
         this.events.removeAllListeners("arrowHit");
@@ -181,11 +221,316 @@ class LevelScene extends LooseScene {
         });
     }
 
+    createPlayerAimLine(): void {
+        this.playerAimLine = this.add.graphics();
+        this.playerAimLine.setDepth(24);
+    }
+
+    updatePlayerAimLine(): void {
+        if (!this.playerAimLine) {
+            return;
+        }
+
+        this.playerAimLine.clear();
+
+        if (this.isLevelEnding || !this.player?.parts?.chest || !this.bow) {
+            return;
+        }
+
+        const previewPower = this.getAimPreviewPower();
+
+        if (previewPower <= 0 || this.bowStream) {
+            return;
+        }
+
+        const startPoint = this.playerLoadout.weapon.attackStyle === "throw"
+            ? this.getPlayerProjectileAnchor(this.mousex, this.mousey)
+            : { x: this.bow.x, y: this.bow.y };
+        const aimAngle = Phaser.Math.Angle.Between(startPoint.x, startPoint.y, this.mousex, this.mousey);
+        const lineColor = this.touchControlsEnabled ? 0x90e0ef : 0xfef08a;
+        const previewPoints = this.getPredictedAimPoints(startPoint.x, startPoint.y, aimAngle, previewPower);
+
+        previewPoints.forEach((point: { x: number; y: number; alpha: number; radius: number }) => {
+            this.playerAimLine.fillStyle(0x001219, point.alpha * 0.28);
+            this.playerAimLine.fillCircle(point.x + 2, point.y + 2, point.radius + 1);
+            this.playerAimLine.fillStyle(lineColor, point.alpha);
+            this.playerAimLine.fillCircle(point.x, point.y, point.radius);
+        });
+    }
+
+    getAimPreviewPower(): number {
+        const scaleMagnitude = Math.abs(this.levelScale) || 1;
+
+        if (this.chargeTime > 0) {
+            return this.chargeTime + (10 / scaleMagnitude);
+        }
+
+        if (this.touchControlsEnabled && this.touchAimPointerId != null) {
+            return 14 / scaleMagnitude;
+        }
+
+        return this.isChargeInputActive() ? 10 / scaleMagnitude : 0;
+    }
+
+    getPredictedAimPoints(startX: number, startY: number, aimAngle: number, previewPower: number): Array<{ x: number; y: number; alpha: number; radius: number }> {
+        const points = [];
+        const scaleMagnitude = Math.abs(this.levelScale) || 1;
+        const throwForceMultiplier = this.player?.throwForceMultiplier ?? 1;
+        const launchSpeed = previewPower * this.playerLoadout.powerMultiplier * throwForceMultiplier * scaleMagnitude;
+        const gravity = this.matter.world.engine.gravity;
+        const deltaTime = 1000 / 60;
+        const gravityScale = gravity.scale ?? 0.001;
+        const frictionAir = 1 - (0.01 * (deltaTime / (1000 / 60)));
+        const gravityStepX = gravity.x * gravityScale * deltaTime * deltaTime;
+        const gravityStepY = gravity.y * gravityScale * deltaTime * deltaTime;
+        const chargeProgress = Phaser.Math.Clamp(this.chargeTime / 100, 0, 1);
+        const dotCount = Phaser.Math.Clamp(Math.round(Phaser.Math.Linear(6, 24, Math.max(chargeProgress, 0.12))), 6, 24);
+        const stepsPerDot = Phaser.Math.Clamp(Math.round(Phaser.Math.Linear(2, 4, chargeProgress)), 2, 4);
+        let positionX = startX;
+        let positionY = startY;
+        let velocityX = Math.cos(aimAngle) * launchSpeed;
+        let velocityY = Math.sin(aimAngle) * launchSpeed;
+
+        for (let dotIndex = 0; dotIndex < dotCount; dotIndex += 1) {
+            for (let step = 0; step < stepsPerDot; step += 1) {
+                velocityX = (velocityX * frictionAir) + gravityStepX;
+                velocityY = (velocityY * frictionAir) + gravityStepY;
+                positionX += velocityX;
+                positionY += velocityY;
+            }
+
+            const progress = dotCount <= 1 ? 1 : dotIndex / (dotCount - 1);
+            points.push({
+                x: positionX,
+                y: positionY,
+                alpha: Phaser.Math.Linear(0.95, 0.35, progress),
+                radius: Phaser.Math.Linear(8, 4, progress)
+            });
+        }
+
+        return points;
+    }
+
+    refreshRuntimeProfileSettings(forceRefresh = false): void {
+        const latestProfile = loadPlayerProfile();
+        const touchControlsEnabled = latestProfile.touchControlsEnabled;
+
+        this.playerProfile = {
+            ...this.playerProfile,
+            removeFadedEnemyCorpses: latestProfile.removeFadedEnemyCorpses,
+            touchControlsEnabled
+        };
+
+        if (!forceRefresh && this.touchControlsEnabled === touchControlsEnabled) {
+            return;
+        }
+
+        this.touchControlsEnabled = touchControlsEnabled;
+        this.clearTouchControlPointers();
+        this.destroyTouchControls();
+
+        if (touchControlsEnabled) {
+            this.createTouchControls();
+        }
+        else {
+            this.chargeDisplay.setDepth(10);
+        }
+    }
+
+    createTouchControls(): void {
+        const aimBase = this.add.circle(
+            TOUCH_AIM_PAD_CENTER.x,
+            TOUCH_AIM_PAD_CENTER.y,
+            TOUCH_AIM_PAD_RADIUS,
+            0x0b7285,
+            0.18
+        ).setDepth(TOUCH_CONTROL_DEPTH);
+        aimBase.setStrokeStyle(6, 0x8ecae6, 0.7);
+
+        const aimKnob = this.add.circle(
+            TOUCH_AIM_PAD_CENTER.x,
+            TOUCH_AIM_PAD_CENTER.y,
+            TOUCH_AIM_KNOB_RADIUS,
+            0x8ecae6,
+            0.72
+        ).setDepth(TOUCH_CONTROL_DEPTH + 1);
+
+        const aimLabel = this.add.text(TOUCH_AIM_PAD_CENTER.x, TOUCH_AIM_PAD_CENTER.y + 184, "Aim", {
+            font: "bold 28px Arial",
+            fill: "#e0fbfc"
+        }).setOrigin(0.5).setDepth(TOUCH_CONTROL_DEPTH + 1);
+
+        const fireButton = this.add.circle(
+            TOUCH_FIRE_BUTTON_CENTER.x,
+            TOUCH_FIRE_BUTTON_CENTER.y,
+            TOUCH_FIRE_BUTTON_RADIUS,
+            0xef476f,
+            0.58
+        ).setDepth(TOUCH_CONTROL_DEPTH);
+        fireButton.setStrokeStyle(6, 0xffd6de, 0.8);
+
+        const fireLabel = this.add.text(TOUCH_FIRE_BUTTON_CENTER.x, TOUCH_FIRE_BUTTON_CENTER.y, "Hold\nFire", {
+            font: "bold 34px Arial",
+            fill: "#ffffff",
+            align: "center"
+        }).setOrigin(0.5).setDepth(TOUCH_CONTROL_DEPTH + 1);
+
+        this.touchAimBase = aimBase;
+        this.touchAimKnob = aimKnob;
+        this.touchAimLabel = aimLabel;
+        this.touchFireButton = fireButton;
+        this.touchFireLabel = fireLabel;
+        this.touchControlsObjects = [aimBase, aimKnob, aimLabel, fireButton, fireLabel];
+        this.chargeDisplay.setDepth(TOUCH_CONTROL_DEPTH + 2);
+
+        this.touchControlPointerDownHandler = (pointer: any) => {
+            if (this.isPointInsideCircle(pointer.x, pointer.y, TOUCH_AIM_PAD_CENTER.x, TOUCH_AIM_PAD_CENTER.y, TOUCH_AIM_PAD_RADIUS)
+                && this.touchAimPointerId == null) {
+                this.touchAimPointerId = pointer.id;
+                this.updateTouchAimFromPointer(pointer);
+                this.refreshTouchControlVisualState();
+                return;
+            }
+
+            if (this.isPointInsideCircle(pointer.x, pointer.y, TOUCH_FIRE_BUTTON_CENTER.x, TOUCH_FIRE_BUTTON_CENTER.y, TOUCH_FIRE_BUTTON_RADIUS)
+                && this.touchFirePointerId == null) {
+                this.touchFirePointerId = pointer.id;
+                this.refreshTouchControlVisualState();
+            }
+        };
+
+        this.touchControlPointerMoveHandler = (pointer: any) => {
+            if (pointer.id !== this.touchAimPointerId) {
+                return;
+            }
+
+            this.updateTouchAimFromPointer(pointer);
+            this.refreshTouchControlVisualState();
+        };
+
+        this.touchControlPointerUpHandler = (pointer: any) => {
+            let controlsChanged = false;
+
+            if (pointer.id === this.touchAimPointerId) {
+                this.touchAimPointerId = undefined;
+                this.touchAimKnobPosition = { x: TOUCH_AIM_PAD_CENTER.x, y: TOUCH_AIM_PAD_CENTER.y };
+                controlsChanged = true;
+            }
+
+            if (pointer.id === this.touchFirePointerId) {
+                this.touchFirePointerId = undefined;
+                controlsChanged = true;
+            }
+
+            if (controlsChanged) {
+                this.refreshTouchControlVisualState();
+            }
+        };
+
+        this.input.on("pointerdown", this.touchControlPointerDownHandler);
+        this.input.on("pointermove", this.touchControlPointerMoveHandler);
+        this.input.on("pointerup", this.touchControlPointerUpHandler);
+        this.refreshTouchControlVisualState();
+    }
+
+    destroyTouchControls(): void {
+        if (this.touchControlPointerDownHandler) {
+            this.input.off("pointerdown", this.touchControlPointerDownHandler);
+        }
+
+        if (this.touchControlPointerMoveHandler) {
+            this.input.off("pointermove", this.touchControlPointerMoveHandler);
+        }
+
+        if (this.touchControlPointerUpHandler) {
+            this.input.off("pointerup", this.touchControlPointerUpHandler);
+        }
+
+        (this.touchControlsObjects ?? []).forEach((object: GameObject) => {
+            if (object?.active) {
+                object.destroy();
+            }
+        });
+
+        this.touchControlsObjects = [];
+        this.touchAimBase = undefined;
+        this.touchAimKnob = undefined;
+        this.touchAimLabel = undefined;
+        this.touchFireButton = undefined;
+        this.touchFireLabel = undefined;
+        this.touchControlPointerDownHandler = undefined;
+        this.touchControlPointerMoveHandler = undefined;
+        this.touchControlPointerUpHandler = undefined;
+    }
+
+    clearTouchControlPointers(): void {
+        this.touchAimPointerId = undefined;
+        this.touchFirePointerId = undefined;
+        this.touchAimKnobPosition = { x: TOUCH_AIM_PAD_CENTER.x, y: TOUCH_AIM_PAD_CENTER.y };
+        this.refreshTouchControlVisualState();
+    }
+
+    refreshTouchControlVisualState(): void {
+        if (this.touchAimBase) {
+            this.touchAimBase.setFillStyle(0x0b7285, this.touchAimPointerId != null ? 0.28 : 0.18);
+            this.touchAimBase.setStrokeStyle(6, 0x8ecae6, this.touchAimPointerId != null ? 1 : 0.7);
+        }
+
+        if (this.touchAimKnob) {
+            this.touchAimKnob.setPosition(this.touchAimKnobPosition.x, this.touchAimKnobPosition.y);
+            this.touchAimKnob.setFillStyle(0x8ecae6, this.touchAimPointerId != null ? 0.9 : 0.72);
+        }
+
+        if (this.touchFireButton) {
+            this.touchFireButton.setFillStyle(this.touchFirePointerId != null ? 0xf94144 : 0xef476f, this.touchFirePointerId != null ? 0.82 : 0.58);
+            this.touchFireButton.setStrokeStyle(6, 0xffd6de, this.touchFirePointerId != null ? 1 : 0.8);
+        }
+
+        if (this.touchFireLabel) {
+            this.touchFireLabel.setText(this.touchFirePointerId != null ? "Release" : "Hold\nFire");
+        }
+    }
+
+    updateTouchAimFromPointer(pointer: any): void {
+        const deltaX = pointer.x - TOUCH_AIM_PAD_CENTER.x;
+        const deltaY = pointer.y - TOUCH_AIM_PAD_CENTER.y;
+        const distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+        const maxKnobDistance = TOUCH_AIM_PAD_RADIUS - TOUCH_AIM_KNOB_RADIUS - 10;
+
+        if (distance <= TOUCH_AIM_DEADZONE) {
+            this.touchAimKnobPosition = { x: TOUCH_AIM_PAD_CENTER.x, y: TOUCH_AIM_PAD_CENTER.y };
+            return;
+        }
+
+        const directionX = deltaX / distance;
+        const directionY = deltaY / distance;
+        const clampedDistance = Math.min(distance, maxKnobDistance);
+
+        this.touchAimDirection = { x: directionX, y: directionY };
+        this.touchAimKnobPosition = {
+            x: TOUCH_AIM_PAD_CENTER.x + (directionX * clampedDistance),
+            y: TOUCH_AIM_PAD_CENTER.y + (directionY * clampedDistance)
+        };
+    }
+
+    isPointInsideCircle(x: number, y: number, centerX: number, centerY: number, radius: number): boolean {
+        return Phaser.Math.Distance.Between(x, y, centerX, centerY) <= radius;
+    }
+
+    isChargeInputActive(): boolean {
+        if (this.touchControlsEnabled) {
+            return this.touchFirePointerId != null;
+        }
+
+        return this.input.activePointer.isDown;
+    }
+
     openPauseMenu(): void {
         if (this.isLevelEnding || this.scene.isActive("PauseScene") || this.scene.isActive("SummaryScene")) {
             return;
         }
 
+        this.clearTouchControlPointers();
         this.chargeTime = 0;
         this.chargeDisplay.setText("Charge: 0");
         this.scene.launch("PauseScene", {
@@ -307,13 +652,24 @@ class LevelScene extends LooseScene {
             return projectile;
         }
 
+        const explosionMaxDamage = projectile.explosionMaxDamage != null
+            ? projectile.explosionMaxDamage + damageBonus
+            : projectile.explosionMaxDamage;
+        const explosionMinDamage = projectile.explosionMinDamage != null
+            ? projectile.explosionMinDamage + pierceBonus
+            : projectile.explosionMinDamage;
+
         return {
             ...projectile,
             damage: {
                 body: projectile.damage.body + damageBonus,
                 head: projectile.damage.head + damageBonus
             },
-            pierceCount: (projectile.pierceCount ?? 0) + pierceBonus
+            pierceCount: (projectile.pierceCount ?? 0) + pierceBonus,
+            explosionMaxDamage,
+            explosionMinDamage: explosionMaxDamage != null && explosionMinDamage != null
+                ? Math.min(explosionMinDamage, explosionMaxDamage)
+                : explosionMinDamage
         };
     }
 
@@ -615,6 +971,7 @@ class LevelScene extends LooseScene {
         this.updateChargeDisplayPosition();
         this.handlePlayerCharge();
         this.updateBowAim(delta);
+        this.updatePlayerAimLine();
 
         const humanoidsDefeated = this.checkCombatCollisions();
         this.updateHumanoidAI(delta);
@@ -634,26 +991,40 @@ class LevelScene extends LooseScene {
     }
 
     updatePointerTracking(): void {
-        const pointer = this.input.activePointer;
-
         if (!this.isLevelEnding) {
+            if (this.touchControlsEnabled && this.player?.parts?.chest) {
+                const chest = this.player.parts.chest.position;
+                this.mousex = chest.x + (this.touchAimDirection.x * TOUCH_AIM_TARGET_DISTANCE);
+                this.mousey = chest.y + (this.touchAimDirection.y * TOUCH_AIM_TARGET_DISTANCE);
+                return;
+            }
+
+            const pointer = this.input.activePointer;
             this.mousex = pointer.x;
             this.mousey = pointer.y;
         }
     }
 
     updateChargeDisplayPosition(): void {
+        if (this.touchControlsEnabled) {
+            this.chargeDisplay.x = TOUCH_FIRE_BUTTON_CENTER.x;
+            this.chargeDisplay.y = TOUCH_FIRE_BUTTON_CENTER.y - TOUCH_FIRE_BUTTON_RADIUS - 34;
+            return;
+        }
+
         this.chargeDisplay.x = this.mousex;
         this.chargeDisplay.y = this.mousey - 20;
     }
 
     handlePlayerCharge(): void {
-        const pointer = this.input.activePointer;
         const scaleMagnitude = Math.abs(this.levelScale) || 1;
-        const chargeRateMultiplier = (this.player?.chargeRateMultiplier ?? 1) * this.getRapidChargeRateMultiplier();
+        const chargeRateMultiplier = (this.player?.chargeRateMultiplier ?? 1)
+            * this.getRapidChargeRateMultiplier()
+            * (this.playerLoadout.weapon.chargeRateMultiplier ?? 1);
         const attackStyle = this.playerLoadout.weapon.attackStyle;
+        const chargeInputActive = this.isChargeInputActive();
 
-        if (pointer.isDown && this.canCharge) {
+        if (chargeInputActive && this.canCharge) {
             if (this.bowStream) {
                 if (attackStyle === "throw") {
                     this.setCombatAction(this.player, "throw", PLAYER_THROW_ANIMATION_MS);
@@ -1914,6 +2285,247 @@ class LevelScene extends LooseScene {
         return arrow;
     }
 
+    createGrenadeShrapnelProjectile(projectileConfig: ProjectileConfig): ProjectileConfig | undefined {
+        switch (projectileConfig.shrapnelProjectileKind) {
+        case "rock":
+            return {
+                id: `${projectileConfig.id}-shrapnel-rock`,
+                texture: "rock",
+                scale: 0.13,
+                lifetimeMs: 2200,
+                collisionGroup: projectileConfig.collisionGroup,
+                maxActive: projectileConfig.maxActive + (projectileConfig.shrapnelCount ?? 0),
+                damage: {
+                    body: 2,
+                    head: 3
+                },
+                tint: projectileConfig.tint,
+                hitboxShape: "circle",
+                sticksToTargets: false,
+                minImpactSpeed: 0
+            };
+        case "arrow":
+            return {
+                id: `${projectileConfig.id}-shrapnel-arrow`,
+                texture: "arrow",
+                scale: 0.14,
+                lifetimeMs: 2400,
+                collisionGroup: projectileConfig.collisionGroup,
+                maxActive: projectileConfig.maxActive + (projectileConfig.shrapnelCount ?? 0),
+                damage: {
+                    body: 1,
+                    head: 2
+                },
+                tint: projectileConfig.tint,
+                sticksToTargets: true
+            };
+        default:
+            return undefined;
+        }
+    }
+
+    showExplosionEffect(x: number, y: number, radius: number, tint?: number): void {
+        const explosionRing = this.add.circle(
+            x,
+            y,
+            24,
+            tint ?? GRENADE_EXPLOSION_FILL_COLOR,
+            0.08
+        ).setDepth(28);
+
+        explosionRing.setStrokeStyle(6, GRENADE_EXPLOSION_RING_COLOR, 0.95);
+
+        this.tweens.add({
+            targets: explosionRing,
+            scaleX: radius / 24,
+            scaleY: radius / 24,
+            alpha: { from: 0.95, to: 0 },
+            duration: 520,
+            ease: "Cubic.out",
+            onComplete: () => {
+                explosionRing.destroy();
+            }
+        });
+    }
+
+    applyExplosionDamageToTarget(
+        target: RagdollPerson,
+        distance: number,
+        radius: number,
+        projectileConfig: ProjectileConfig,
+        fromPlayer: boolean,
+        sourceCombatId?: string,
+        explosionX?: number,
+        explosionY?: number
+    ): void {
+        if (target.health <= 0 || radius <= 0) {
+            return;
+        }
+
+        const maxDamage = projectileConfig.explosionMaxDamage ?? projectileConfig.damage.body;
+        const minDamage = Math.min(projectileConfig.explosionMinDamage ?? maxDamage, maxDamage);
+        const damageFalloff = Phaser.Math.Clamp(distance / radius, 0, 1);
+        const damageDealt = Math.max(0, Math.round(Phaser.Math.Linear(maxDamage, minDamage, damageFalloff)));
+
+        if (damageDealt <= 0) {
+            return;
+        }
+
+        target.linkedSprites.forEach((sprite) => {
+            sprite.setTint(0xff9f1c);
+        });
+
+        target.health -= damageDealt;
+
+        this.time.delayedCall(180, () => {
+            target.linkedSprites.forEach((sprite) => {
+                sprite.clearTint();
+            });
+        });
+
+        if (fromPlayer) {
+            this.events.emit("arrowHit", 1);
+            this.applyStatusEffectsToHumanoid(target, projectileConfig.explosionStatusEffects);
+            this.interruptPulseAttack(target);
+            this.healPlayer(projectileConfig.healPlayerOnHit ?? 0, target.parts.head.position.x, target.parts.head.position.y - 90);
+        }
+        else {
+            this.applyStatusEffectsToPlayer(projectileConfig.explosionStatusEffects);
+            this.healProjectileOwner(sourceCombatId, projectileConfig.healOwnerOnHit ?? 0);
+        }
+
+        if (target.health <= 0) {
+            this.handlePersonDeath(target, fromPlayer ? projectileConfig : undefined);
+
+            if (target !== this.player && explosionX != null && explosionY != null) {
+                this.launchPersonFromExplosion(target, explosionX, explosionY, radius);
+            }
+        }
+    }
+
+    launchPersonFromExplosion(person: RagdollPerson, explosionX: number, explosionY: number, radius: number): void {
+        const bodyApi = Phaser.Physics.Matter.Matter.Body;
+        const baseSpeed = 12;
+
+        person.bodies.forEach((bodyPart) => {
+            const deltaX = bodyPart.position.x - explosionX;
+            const deltaY = bodyPart.position.y - explosionY;
+            const distance = Math.max(1, Math.sqrt((deltaX * deltaX) + (deltaY * deltaY)));
+            const distanceFalloff = 1 - Phaser.Math.Clamp(distance / Math.max(radius, 1), 0, 1);
+            const directionX = deltaX / distance;
+            const directionY = deltaY / distance;
+            const speedMagnitude = baseSpeed * Phaser.Math.Clamp(0.55 + distanceFalloff, 0.55, 1.4);
+            const launchVelocityX = directionX * speedMagnitude;
+            const launchVelocityY = (directionY * speedMagnitude) - (3.4 + (distanceFalloff * 2.2));
+
+            bodyApi.setVelocity(bodyPart, {
+                x: launchVelocityX,
+                y: launchVelocityY
+            });
+            bodyApi.setAngularVelocity(bodyPart, Phaser.Math.FloatBetween(-0.22, 0.22) * (0.6 + distanceFalloff));
+
+            this.applyForceToBody(
+                bodyPart,
+                directionX * 0.0045 * (0.5 + distanceFalloff),
+                (directionY * 0.0032 * (0.45 + distanceFalloff)) - 0.0018
+            );
+        });
+    }
+
+    detonateProjectile(arrow: MatterArrow, arrowList: ArrowCollection, impactTarget?: RagdollPerson): void {
+        const radius = arrow.projectileConfig.explosionRadius ?? 0;
+
+        if (radius <= 0) {
+            return;
+        }
+
+        const explosionX = arrow.body?.position?.x ?? arrow.x;
+        const explosionY = arrow.body?.position?.y ?? arrow.y;
+        const targets = arrowList.fromplayer ? this.humanoids.slice() : [this.player];
+
+        this.showExplosionEffect(explosionX, explosionY, radius, arrow.projectileConfig.tint);
+
+        targets.forEach((target) => {
+            if (!target || target.dead || target.health <= 0) {
+                return;
+            }
+
+            let nearestDistance = Number.POSITIVE_INFINITY;
+
+            target.bodies.forEach((bodyPart) => {
+                const bodyDistance = Phaser.Math.Distance.Between(
+                    explosionX,
+                    explosionY,
+                    bodyPart.position.x,
+                    bodyPart.position.y
+                );
+
+                if (bodyDistance < nearestDistance) {
+                    nearestDistance = bodyDistance;
+                }
+            });
+
+            if (impactTarget && impactTarget.combatId === target.combatId) {
+                nearestDistance = 0;
+            }
+
+            if (nearestDistance > radius) {
+                return;
+            }
+
+            this.applyExplosionDamageToTarget(
+                target,
+                nearestDistance,
+                radius,
+                arrow.projectileConfig,
+                arrowList.fromplayer,
+                arrow.sourceCombatId,
+                explosionX,
+                explosionY
+            );
+        });
+
+        const shrapnelCount = arrow.projectileConfig.shrapnelCount ?? 0;
+        const shrapnelConfig = this.createGrenadeShrapnelProjectile(arrow.projectileConfig);
+
+        if (shrapnelConfig && shrapnelCount > 0) {
+            const speedMin = arrow.projectileConfig.shrapnelSpeedMin ?? 18;
+            const speedMax = Math.max(speedMin, arrow.projectileConfig.shrapnelSpeedMax ?? speedMin);
+
+            for (let shrapnelIndex = 0; shrapnelIndex < shrapnelCount; shrapnelIndex += 1) {
+                const angle = (Math.PI * 2 * shrapnelIndex) / shrapnelCount + Phaser.Math.FloatBetween(-0.18, 0.18);
+                const speed = Phaser.Math.FloatBetween(speedMin, speedMax);
+                const shrapnel = this.spawnArrow(
+                    explosionX,
+                    explosionY,
+                    angle,
+                    Math.cos(angle) * speed,
+                    Math.sin(angle) * speed,
+                    1,
+                    shrapnelConfig
+                );
+
+                if (arrow.sourceCombatId) {
+                    shrapnel.sourceCombatId = arrow.sourceCombatId;
+                }
+
+                arrowList.push(shrapnel);
+                this.time.delayedCall(shrapnelConfig.lifetimeMs, () => {
+                    if (shrapnel) {
+                        this.destroyArrow(shrapnel, arrowList);
+                    }
+                });
+            }
+
+            while (arrowList.length > shrapnelConfig.maxActive) {
+                this.destroyArrow(arrowList[0], arrowList);
+            }
+        }
+
+        arrow.alreadyHit = true;
+        this.destroyArrowImmediately(arrow, arrowList);
+    }
+
     shootArrow(
         power: number,
         scale: number,
@@ -1976,6 +2588,30 @@ class LevelScene extends LooseScene {
                 arrow.destroy();
             }
         });
+    }
+
+    destroyArrowImmediately(arrow: MatterArrow, arrowList?: ArrowCollection): void {
+        if (!arrow || !arrow.active) {
+            return;
+        }
+
+        if (arrowList != null) {
+            const arrowIndex = arrowList.indexOf(arrow);
+
+            if (arrowIndex >= 0) {
+                arrowList.splice(arrowIndex, 1);
+            }
+        }
+
+        arrow.active = false;
+
+        if (arrow.bodyConstraint) {
+            this.matter.world.removeConstraint(arrow.bodyConstraint);
+        }
+
+        arrow.setVisible(false);
+        arrow.setAlpha(0);
+        arrow.destroy();
     }
 
     createPlayer(x: number, y: number, scale: number, health: number): { player: RagdollPerson; playerContainer: GameContainer; bowSprite: MatterImage; aimArrow: MatterImage } {
@@ -2069,6 +2705,11 @@ class LevelScene extends LooseScene {
         const minImpactSpeed = arrow.projectileConfig.minImpactSpeed ?? 0;
 
         if (impactSpeed < minImpactSpeed) {
+            return;
+        }
+
+        if ((arrow.projectileConfig.explosionRadius ?? 0) > 0) {
+            this.detonateProjectile(arrow, arrowList, person);
             return;
         }
 

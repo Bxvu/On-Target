@@ -43,33 +43,47 @@ class PauseScene extends Menu {
         pauseContainer.add([controlsPanel, controlsTitle]);
 
         const resumeButton = createTextButton(this, {
-            x: -360,
-            y: -10,
-            width: 320,
+            x: -450,
+            y: 20,
+            width: 160,
             height: 110,
             label: "Resume",
             backgroundColor: 0x3fafaa,
+            font: "bold 30px Arial",
             parent: pauseContainer
         });
 
         const restartButton = createTextButton(this, {
-            x: -360,
-            y: 135,
-            width: 320,
+            x: -270,
+            y: 20,
+            width: 160,
             height: 110,
             label: "Restart",
             backgroundColor: 0xffd166,
+            font: "bold 30px Arial",
+            parent: pauseContainer
+        });
+
+        const settingsButton = createTextButton(this, {
+            x: -450,
+            y: 165,
+            width: 160,
+            height: 110,
+            label: "Settings",
+            backgroundColor: 0x8ecae6,
+            font: "bold 28px Arial",
             parent: pauseContainer
         });
 
         const mainMenuButton = createTextButton(this, {
-            x: -360,
-            y: 280,
-            width: 320,
+            x: -270,
+            y: 165,
+            width: 160,
             height: 110,
-            label: "Main Menu",
+            label: "Main\nMenu",
             backgroundColor: 0xef476f,
             textColor: "#ffffff",
+            font: "bold 28px Arial",
             parent: pauseContainer
         });
 
@@ -160,6 +174,14 @@ class PauseScene extends Menu {
             this.scene.start(this.currentLevel, this.levelData);
         });
 
+        settingsButton.background.on("pointerup", () => {
+            this.menuLeave(pauseContainer, "PauseScene", "SettingsMenu", {
+                returnScene: "PauseScene",
+                currentLevel: this.currentLevel,
+                levelData: this.levelData
+            });
+        });
+
         mainMenuButton.background.on("pointerup", () => {
             this.scene.stop(this.currentLevel);
             this.scene.start("MainMenu");
@@ -178,6 +200,8 @@ class PauseScene extends Menu {
     }
 
     resumeLevel(): void {
+        const levelScene = this.getCurrentLevelScene();
+        levelScene?.refreshRuntimeProfileSettings();
         this.scene.stop();
         this.scene.resume(this.currentLevel);
     }

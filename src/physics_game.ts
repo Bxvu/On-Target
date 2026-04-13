@@ -5,6 +5,9 @@ const manualLevelScenes = getManualLevelDefinitions().map(
 const game = new Phaser.Game({
     type: Phaser.AUTO,
     backgroundColor: "#2beaff",
+    input: {
+        activePointers: 3
+    },
     physics: {
         default: "matter",
         matter: {
